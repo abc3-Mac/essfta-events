@@ -46,7 +46,15 @@
       <form method="post" action="/events/{{ ev.id }}/status">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="status" value="scheduled">
-        <button class="btn small ghost">Reinstate</button>
+        <button class="btn small ghost">{% if ev.status == 'archived' %}Restore{% else %}Reinstate{% endif %}</button>
+      </form>
+      {% endif %}
+      {% if user.role == 'admin' and ev.status != 'archived' %}
+      <form method="post" action="/events/{{ ev.id }}/status"
+            onsubmit="return confirm('Remove this event from ALL public views? It moves to the Archived list below, where it can be restored.');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="status" value="archived">
+        <button class="btn small warn">Remove</button>
       </form>
       {% endif %}
     </td>
@@ -62,4 +70,11 @@
   <summary>Past events ({{ past | length }})</summary>
   {{ event_table(past) }}
 </details>
+
+{% if user.role == 'admin' and archived %}
+<details class="past-block">
+  <summary>Archived / removed events ({{ archived | length }}) — hidden from the public</summary>
+  {{ event_table(archived) }}
+</details>
+{% endif %}
 {% endblock %}

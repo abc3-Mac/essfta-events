@@ -148,8 +148,10 @@ def set_password(username, pw_hash):
 
 def list_events(region=None, event_type=None, state=None, club=None, status=None,
                 date_from=None, date_to=None, include_canceled=True):
-    q = "SELECT * FROM events WHERE status != 'archived'"
+    q = "SELECT * FROM events WHERE 1=1"
     args = []
+    if not status:  # archived events only appear when asked for explicitly
+        q += " AND status != 'archived'"
     if region:
         q += " AND region=?"; args.append(region)
     if event_type:
