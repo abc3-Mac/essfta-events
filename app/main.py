@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import auth, db
+from . import auth, db, xlsx_io
 
 app = FastAPI(title="ESSFTA Field Events")
 HERE = os.path.dirname(__file__)
@@ -393,6 +393,73 @@ async def save_event(request: Request, event_id: int):
         return PlainTextResponse("Bad CSRF token", status_code=403)
     db.update_event(event_id, event_from_form(form, user), user["username"])
     return RedirectResponse("/dashboard", status_code=303)
+
+
+# ---------- spreadsheet template download + bulk upload ----------
+
+@app.get("/template.xlsx")
+def template_download(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    if user["role"] == "governor":
+        region = user["region"]  # the file announces whose schedule it is
+    else:
+        region = request.query_params.get("region") or None
+        if region not in db.REGIONS:
+            region = None
+    fname = f"ESSFTA-{(region or 'field-trial').replace(' ', '-')}-schedule.xlsx"
+    return Response(
+        xlsx_io.build_template(region),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.post("/import")
+async def import_xlsx(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    upload = form.get("file")
+    if upload is None or not getattr(upload, "filename", ""):
+        return PlainTextResponse("No file uploaded", status_code=400)
+    try:
+        rows, declared, errors = xlsx_io.parse_upload(await upload.read())
+    except Exception:
+        return templates.TemplateResponse(request, "import_result.html", {
+            "user": user, "created": [], "skipped": [],
+            "errors": ["That file could not be read as an Excel (.xlsx) spreadsheet."],
+        })
+    if user["role"] == "governor":
+        region = user["region"]  # always their own, whatever the file says
+        if declared and declared != region:
+            errors.insert(0, f"Heads up: the spreadsheet is marked {declared}, but you are the {region} "
+                             f"governor, so these events were added to {region}. If that's the wrong file, "
+                             f"hide these events and ask the {declared} governor to upload it.")
+    else:
+        picked = form.get("region") or None
+        region = declared or (picked if picked in db.REGIONS else None)
+        if declared and picked and picked in db.REGIONS and declared != picked:
+            errors.insert(0, f"The spreadsheet is marked {declared}, which overrode your {picked} selection.")
+    created, skipped = [], []
+    for row in rows:
+        row["region"] = region
+        con = db.connect()
+        dup = con.execute("SELECT id FROM events WHERE club=? AND start_date=? AND status != 'archived'",
+                          (row["club"], row["start_date"])).fetchone()
+        con.close()
+        if dup:
+            skipped.append(f"{row['club']} — {row['start_date']} already on the calendar")
+            continue
+        eid = db.create_event(row, user["username"] + ":xlsx")
+        created.append({**row, "id": eid})
+    return templates.TemplateResponse(request, "import_result.html", {
+        "user": user, "created": created, "skipped": skipped, "errors": errors,
+    })
 
 
 # ---------- admin: manage governor accounts ----------

@@ -10,6 +10,36 @@
   <form method="post" action="/logout"><button class="btn small ghost">Sign out</button></form>
 </div>
 
+<details class="past-block" style="margin:0 0 10px">
+  <summary>Bulk add from a spreadsheet</summary>
+  <div style="border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:6px">
+    {% if user.role == 'governor' %}
+    <p style="margin:4px 0"><a class="btn small ghost" href="/template.xlsx">Download the {{ user.region }} Excel template</a>
+    <small>— the familiar schedule format, marked with your region: one row per trial, with an example row to copy.</small></p>
+    {% else %}
+    <p style="margin:4px 0">Download a region-marked template:
+      {% for r in REGIONS %}<a href="/template.xlsx?region={{ r | urlencode }}">{{ r }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+    <form method="post" action="/import" enctype="multipart/form-data" style="margin:8px 0 4px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if user.role == 'admin' %}
+      <label style="font-size:13px">Import into region
+        <select name="region">
+          {% for r in REGIONS %}<option>{{ r }}</option>{% endfor %}
+          <option value="">— none (National / other) —</option>
+        </select>
+      </label>
+      {% endif %}
+      <input type="file" name="file" accept=".xlsx" required>
+      <button class="btn small">Upload &amp; add events</button>
+    </form>
+    <small>Each row becomes an event{% if user.role == 'governor' %} in your region{% endif %}.
+    Rows already on the calendar are skipped, so uploading twice is safe. You can open each
+    added event afterward to fill in judges, fees, and links.</small>
+  </div>
+</details>
+
 {% if user.role == 'admin' %}
 <form class="filters" method="get">
   <label>Region
