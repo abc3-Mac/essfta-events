@@ -4,41 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Field Trial Events — embed demo</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;700&family=PT+Serif:wght@700&display=swap">
 <style>
-  /* Rough stand-in for the englishspringerspaniels.org WordPress theme,
-     so the iframe can be judged in context. */
-  body { margin: 0; font: 16px/1.5 Georgia, "Times New Roman", serif; color: #2a2a2a; background: #fff; }
-  .wp-head { background: #1c3324; color: #fff; padding: 18px 24px; }
-  .wp-head .site-title { font-size: 24px; font-weight: 700; }
-  .wp-head .tag { font-size: 13px; color: #b9c8bd; font-style: italic; }
-  .wp-menu { background: #142619; padding: 0 24px; font: 14px/1 Helvetica, Arial, sans-serif; }
-  .wp-menu a { display: inline-block; color: #dfe8dc; text-decoration: none; padding: 12px 14px; }
-  .wp-menu a.here { background: #2c5137; color: #fff; }
-  .wp-content { max-width: 1080px; margin: 0 auto; padding: 24px; }
-  .wp-content h1 { font-size: 28px; color: #1c3324; }
-  .demo-note { background: #fff8e0; border: 1px solid #e0cd80; border-radius: 6px; padding: 10px 14px; font: 14px Helvetica, Arial, sans-serif; margin-bottom: 18px; }
+  /* Styled to match englishspringerspaniels.org (Avada theme):
+     brand #681e12, text #141617, page bg #f2f3f5, Raleway body, PT Serif headings. */
+  body { margin: 0; font: 15px/1.55 Raleway, Helvetica, Arial, sans-serif; color: #141617; background: #f2f3f5; }
+  .top-strip { background: #681e12; height: 34px; }
+  .wp-head { background: #fff; padding: 20px 24px; text-align: center; }
+  .wp-head .site-title { font-family: "PT Serif", Georgia, serif; font-size: 30px; font-weight: 700; color: #141617; }
+  .wp-head .tag { font-size: 12.5px; color: #8a8f94; font-style: italic; margin-top: 4px; }
+  .wp-menu { background: #681e12; text-align: center; font-size: 14px; font-weight: 600; }
+  .wp-menu a { display: inline-block; color: #fff; text-decoration: none; padding: 14px 16px; }
+  .wp-menu a.here { background: #52170e; }
+  .wp-content-outer { background: #f2f3f5; padding: 28px 16px 40px; }
+  .wp-content { max-width: 1080px; margin: 0 auto; background: #fff; padding: 28px 32px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .wp-content h1 { font-family: "PT Serif", Georgia, serif; font-size: 30px; color: #141617; margin: 0 0 14px; }
+  .demo-note { background: #fdf6ec; border: 1px solid #e3cfa2; border-radius: 4px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 18px; }
+  .demo-note code { background: #f2f3f5; padding: 0 4px; }
+  a { color: #681e12; }
   iframe#essfta-events { width: 100%; border: 0; min-height: 600px; }
-  .wp-foot { border-top: 1px solid #ddd; margin-top: 32px; padding: 18px 24px; font-size: 13px; color: #777; text-align: center; }
+  .wp-foot { background: #212326; color: #b9bcbe; margin-top: 0; padding: 22px 24px; font-size: 12.5px; text-align: center; }
 </style>
 </head>
 <body>
+<div class="top-strip"></div>
 <div class="wp-head">
   <div class="site-title">English Springer Spaniel Field Trial Association</div>
   <div class="tag">demo mock of englishspringerspaniels.org — NOT the real site</div>
 </div>
 <nav class="wp-menu">
-  <a href="#">Home</a><a href="#">About</a><a href="#" class="here">Events ▾ Field Trial Events</a><a href="#">News</a><a href="#">Contact</a>
+  <a href="#">Home</a><a href="#">About ESSFTA</a><a href="#" class="here">Events ▾ Field Trial Events</a><a href="#">News</a><a href="#">Contact</a>
 </nav>
+<div class="wp-content-outer">
 <div class="wp-content">
   <h1>Field Trial Events</h1>
   <div class="demo-note">
     <strong>Demo page.</strong> Everything below the line is the live events app inside an
-    <code>&lt;iframe&gt;</code> — exactly the snippet that will go on the WordPress page.
+    <code>&lt;iframe&gt;</code> — exactly the snippet that goes on the WordPress page.
     Resize the window or switch to Calendar to see the frame grow and shrink with its content.
   </div>
-  <hr>
+  <hr style="border:0;border-top:1px solid #e2e4e7">
 
-  <!-- ==== THE SNIPPET THAT GOES INTO WORDPRESS (Custom HTML block) ==== -->
+  <!-- ==== THE SNIPPET THAT GOES INTO WORDPRESS (Code Block element) ==== -->
   <iframe id="essfta-events" src="/?embed=1" title="ESSFTA Field Events"></iframe>
   <script>
     window.addEventListener("message", function (e) {
@@ -51,6 +59,7 @@
   <!-- ==== END SNIPPET (in WordPress, src becomes https://essfta-events.collver.biz/?embed=1) ==== -->
 
 </div>
-<div class="wp-foot">© ESSFTA — demo footer</div>
+</div>
+<div class="wp-foot">© English Springer Spaniel Field Trial Association — demo footer</div>
 </body>
 </html>
