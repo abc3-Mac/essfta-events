@@ -55,8 +55,15 @@ templates.env.globals.update(
 )
 
 
-def public_headers(resp: Response):
+@app.middleware("http")
+async def frame_ancestors_header(request: Request, call_next):
+    # every route inherits the embed policy (Opus verify pass caught /login & co. missing it)
+    resp = await call_next(request)
     resp.headers["Content-Security-Policy"] = f"frame-ancestors {FRAME_ANCESTORS}"
+    return resp
+
+
+def public_headers(resp: Response):
     return resp
 
 
