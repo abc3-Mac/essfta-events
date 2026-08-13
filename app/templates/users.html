@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Governor accounts — ESSFTA Field Events{% endblock %}
+{% block content %}
+<div class="dash-head">
+  <h2>Governor accounts</h2>
+  <a class="btn small ghost" href="/dashboard">&larr; dashboard</a>
+</div>
+
+{% if new_password %}
+<div class="error" style="background:#eef7ee;border-color:#7fb87f;color:#1e4d1e">
+  Password for <strong>{{ pw_for }}</strong>: <code style="font-size:16px">{{ new_password }}</code>
+  — copy it now; it is shown only this once.
+</div>
+{% endif %}
+
+<table class="events">
+  <tr><th>Username</th><th>Name</th><th>Role</th><th>Region</th><th>Status</th><th></th></tr>
+  {% for u in users %}
+  <tr>
+    <td><code>{{ u.username }}</code></td>
+    <td>{{ u.display_name }}</td>
+    <td>{{ u.role }}</td>
+    <td>{{ u.region or "—" }}</td>
+    <td>{% if u.active %}active{% else %}<strong style="color:#a02020">deactivated</strong>{% endif %}</td>
+    <td class="actions">
+      <form method="post" action="/users/{{ u.username }}/resetpw">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn small ghost">Reset password</button>
+      </form>
+      {% if u.username != user.username %}
+      {% if u.active %}
+      <form method="post" action="/users/{{ u.username }}/active"
+            onsubmit="return confirm('Deactivate {{ u.username }}? They can no longer sign in; their events remain.');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="active" value="0">
+        <button class="btn small warn">Deactivate</button>
+      </form>
+      {% else %}
+      <form method="post" action="/users/{{ u.username }}/active">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="active" value="1">
+        <button class="btn small ghost">Reactivate</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>Add a new field governor</h3>
+<form class="event-form" method="post" action="/users/new">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <fieldset>
+    <div class="row">
+      <div><label>Username (letters/numbers)</label><input type="text" name="username" required></div>
+      <div><label>Display name</label><input type="text" name="display_name" required></div>
+      <div><label>Region</label>
+        <select name="region">{% for r in REGIONS %}<option>{{ r }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    <button class="btn">Create account</button>
+    <p><small>The password is generated automatically and shown once — hand it to the new governor.</small></p>
+  </fieldset>
+</form>
+{% endblock %}

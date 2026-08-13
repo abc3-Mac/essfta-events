@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ESSFTA Field Events{% endblock %}
+{% block content %}
+<div class="dash-head">
+  <h2>{% if user.role == 'admin' %}All events{% else %}{{ user.region }} region events{% endif %}</h2>
+  <span class="who">signed in as {{ user.display_name }}
+    ({% if user.role == 'admin' %}admin{% else %}{{ user.region }} governor{% endif %})</span>
+  <a class="btn small" href="/events/new">+ Add event</a>
+  {% if user.role == 'admin' %}<a class="btn small ghost" href="/users">Manage governors</a>{% endif %}
+  <form method="post" action="/logout"><button class="btn small ghost">Sign out</button></form>
+</div>
+
+{% if user.role == 'admin' %}
+<form class="filters" method="get">
+  <label>Region
+    <select name="region" onchange="this.form.submit()">
+      <option value="">All regions</option>
+      {% for r in REGIONS %}<option value="{{ r }}" {% if region_filter == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+{% endif %}
+
+{% macro event_table(evs) %}
+<table class="events">
+  <tr><th>Date</th><th>Club / Event</th><th>City</th><th>State</th><th>Status</th><th></th></tr>
+  {% for ev in evs %}
+  <tr class="ev {% if ev.status == 'canceled' %}canceled{% endif %}"
+      style="border-left-color: {{ REGION_COLORS.get(ev.region, '#9aa3ad') }}">
+    <td>{{ fmt_dates(ev.start_date, ev.end_date) }} <span style="color:#889">{{ ev.start_date[:4] }}</span></td>
+    <td><span class="title">{{ ev.club or ev.title }}</span>
+        <div class="meta">{{ ev.event_type }}{% if ev.region %} · {{ ev.region }}{% endif %}</div></td>
+    <td>{{ ev.city }}</td>
+    <td>{{ ev.state }}</td>
+    <td>{{ ev.status }}</td>
+    <td class="actions">
+      <a class="btn small ghost" href="/events/{{ ev.id }}/edit">Edit</a>
+      {% if ev.status == 'scheduled' %}
+      <form method="post" action="/events/{{ ev.id }}/status"
+            onsubmit="return confirm('Cancel this event? It stays listed, marked CANCELED.');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="status" value="canceled">
+        <button class="btn small warn">Cancel</button>
+      </form>
+      {% else %}
+      <form method="post" action="/events/{{ ev.id }}/status">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="status" value="scheduled">
+        <button class="btn small ghost">Reinstate</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+<h3>Upcoming ({{ upcoming | length }})</h3>
+{% if upcoming %}{{ event_table(upcoming) }}{% else %}<p>No upcoming events — add one.</p>{% endif %}
+
+<details class="past-block">
+  <summary>Past events ({{ past | length }})</summary>
+  {{ event_table(past) }}
+</details>
+{% endblock %}

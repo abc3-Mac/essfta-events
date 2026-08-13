@@ -1,0 +1,22 @@
+services:
+  events:
+    build: .
+    image: essfta-events:1.0.0
+    container_name: essfta-events
+    restart: unless-stopped
+    environment:
+      EVENTS_SECRET_KEY: "${EVENTS_SECRET_KEY}"
+      EVENTS_DB: /data/events.db
+    volumes:
+      - events_data:/data
+    networks:
+      - npm_npm_network
+    ports:
+      - "8791:8791"   # direct access over Tailscale for testing before NPM route
+
+volumes:
+  events_data:
+
+networks:
+  npm_npm_network:
+    external: true

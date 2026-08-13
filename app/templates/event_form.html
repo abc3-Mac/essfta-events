@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}Add event{% else %}Edit event{% endif %} — ESSFTA Field Events{% endblock %}
+{% block content %}
+<h2>{% if is_new %}Add an event{% else %}Edit: {{ ev.club or ev.title }}{% endif %}</h2>
+<p class="noprint"><a href="/dashboard">&larr; back to dashboard</a></p>
+
+<form class="event-form" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+
+  <fieldset>
+    <legend>The basics</legend>
+    <label>Club name</label>
+    <input type="text" name="club" value="{{ ev.club }}" required>
+    <label>Event title <small>(defaults fine — shown where a fuller name helps)</small></label>
+    <input type="text" name="title" value="{{ ev.title }}" placeholder="e.g. Platte River ESS Club Fall Field Trial" required>
+    <div class="row">
+      <div>
+        <label>First day</label>
+        <input type="date" name="start_date" value="{{ ev.start_date[:10] }}" required>
+      </div>
+      <div>
+        <label>Last day <small>(leave equal for one-day events)</small></label>
+        <input type="date" name="end_date" value="{{ ev.end_date[:10] }}">
+      </div>
+    </div>
+    <p><small>Days of the week are shown automatically from the dates — no need to type them.</small></p>
+    <div class="row">
+      <div>
+        <label>Event type</label>
+        <select name="event_type">
+          {% for t in EVENT_TYPES %}<option {% if ev.event_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Region</label>
+        {% if user.role == 'governor' %}
+        <input type="text" value="{{ user.region }}" disabled>
+        {% else %}
+        <select name="region">
+          <option value="">— none (National / seminar / other) —</option>
+          {% for r in REGIONS %}<option value="{{ r }}" {% if ev.region == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+        </select>
+        {% endif %}
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Location</legend>
+    <div class="row">
+      <div><label>City</label><input type="text" name="city" value="{{ ev.city }}"></div>
+      <div><label>State / Province</label><input type="text" name="state" maxlength="2" value="{{ ev.state }}" placeholder="e.g. NE"></div>
+    </div>
+    <label>Grounds / venue <small>(optional)</small></label>
+    <input type="text" name="venue" value="{{ ev.venue }}">
+  </fieldset>
+
+  <fieldset>
+    <legend>Stakes offered</legend>
+    <div class="checks">
+      <label><input type="checkbox" name="stakes_open" {% if ev.stakes_open %}checked{% endif %}> Open</label>
+      <label><input type="checkbox" name="stakes_amateur" {% if ev.stakes_amateur %}checked{% endif %}> Amateur</label>
+      <label><input type="checkbox" name="stakes_puppy" {% if ev.stakes_puppy %}checked{% endif %}> Puppy</label>
+      <label><input type="checkbox" name="water_test" {% if ev.water_test %}checked{% endif %}> Water Test</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Details (all optional)</legend>
+    <div class="row">
+      <div><label>Entry fee</label><input type="text" name="cost" value="{{ ev.cost }}" placeholder="$165.00"></div>
+      <div><label>Entries close</label><input type="text" name="entries_close" value="{{ ev.entries_close }}" placeholder="e.g. Aug 17, 11:59 PM CT"></div>
+    </div>
+    <div class="row">
+      <div><label>Judge 1</label><input type="text" name="judge1" value="{{ ev.judge1 }}"></div>
+      <div><label>Judge 2</label><input type="text" name="judge2" value="{{ ev.judge2 }}"></div>
+    </div>
+    <div class="row">
+      <div><label>Judge 3</label><input type="text" name="judge3" value="{{ ev.judge3 }}"></div>
+      <div><label>Judge 4</label><input type="text" name="judge4" value="{{ ev.judge4 }}"></div>
+    </div>
+    <label>Apprentice judges</label>
+    <input type="text" name="apprentice_judges" value="{{ ev.apprentice_judges }}">
+    <label>Premium / entry link</label>
+    <input type="url" name="link_url" value="{{ ev.link_url }}" placeholder="https://…">
+    <label>Notes</label>
+    <textarea name="notes" rows="3">{{ ev.notes }}</textarea>
+    {% if not is_new %}
+    <label>Status</label>
+    <select name="status">
+      {% for s in ["scheduled", "canceled", "postponed"] %}
+      <option value="{{ s }}" {% if ev.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </fieldset>
+
+  <button class="btn">{% if is_new %}Add event{% else %}Save changes{% endif %}</button>
+</form>
+{% endblock %}
