@@ -33,6 +33,7 @@
       {%- if ev.stakes_open %}{% set _ = st.append('Open') %}{% endif -%}
       {%- if ev.stakes_amateur %}{% set _ = st.append('Amateur') %}{% endif -%}
       {%- if ev.stakes_puppy %}{% set _ = st.append('Puppy') %}{% endif -%}
+      {%- if ev.stakes_cocker %}{% set _ = st.append('Cocker') %}{% endif -%}
       {{ st | join(' / ') }}{% if ev.water_test %}{% if st %} + {% endif %}Water{% endif %}
     </td>
   </tr>

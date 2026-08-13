@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ ev.club or ev.title }} — ESSFTA Field Events{% endblock %}
+{% block content %}
+<p><a href="javascript:history.back()">&larr; back</a></p>
+<div class="detail-card" style="border-top: 6px solid {{ REGION_COLORS.get(ev.region, '#9aa3ad') }}">
+  <h2>{{ ev.club or ev.title }}
+    {% if ev.status == 'canceled' %}<span class="badge cancel">CANCELED</span>{% endif %}
+    {% if ev.status == 'postponed' %}<span class="badge postponed">POSTPONED</span>{% endif %}
+  </h2>
+  {% if ev.title and ev.club and ev.title != ev.club %}<p class="meta">{{ ev.title }}</p>{% endif %}
+  <table class="detail">
+    <tr><th>Date</th><td>{{ fmt_dates(ev.start_date, ev.end_date) }} ({{ fmt_days(ev.start_date, ev.end_date) }}), {{ ev.start_date[:4] }}</td></tr>
+    <tr><th>Type</th><td>{{ ev.event_type }}{% if ev.region %} · {{ ev.region }} region{% endif %}</td></tr>
+    {% if ev.city or ev.state or ev.venue %}
+    <tr><th>Location</th><td>{{ ev.venue }}{% if ev.venue and (ev.city or ev.state) %} — {% endif %}{{ ev.city }}{% if ev.city and ev.state %}, {% endif %}{{ ev.state }}</td></tr>
+    {% endif %}
+    {%- set st = [] -%}
+    {%- if ev.stakes_open %}{% set _ = st.append('Open') %}{% endif -%}
+    {%- if ev.stakes_amateur %}{% set _ = st.append('Amateur') %}{% endif -%}
+    {%- if ev.stakes_puppy %}{% set _ = st.append('Puppy') %}{% endif -%}
+    {%- if ev.stakes_cocker %}{% set _ = st.append('Cocker') %}{% endif -%}
+    {% if st or ev.water_test %}
+    <tr><th>Stakes</th><td>{{ st | join(' / ') }}{% if ev.water_test %}{% if st %} + {% endif %}Water Test{% endif %}</td></tr>
+    {% endif %}
+    {% if ev.cost %}<tr><th>Entry fee</th><td>{{ ev.cost }}</td></tr>{% endif %}
+    {% if ev.entries_close %}<tr><th>Entries close</th><td>{{ ev.entries_close }}</td></tr>{% endif %}
+    {% set judges = [ev.judge1, ev.judge2, ev.judge3, ev.judge4] | select | list %}
+    {% if judges %}<tr><th>Judges</th><td>{{ judges | join(', ') }}</td></tr>{% endif %}
+    {% if ev.apprentice_judges %}<tr><th>Apprentices</th><td>{{ ev.apprentice_judges }}</td></tr>{% endif %}
+    {% if ev.link_url %}<tr><th>Entry info</th><td><a href="{{ ev.link_url }}" target="_blank" rel="noopener">{{ ev.link_url }}</a></td></tr>{% endif %}
+    {% if ev.notes %}<tr><th>Notes</th><td>{{ ev.notes }}</td></tr>{% endif %}
+  </table>
+</div>
+{% endblock %}

@@ -42,7 +42,7 @@
     <td>{{ fmt_dates(ev.start_date, ev.end_date) }}</td>
     <td class="hide-sm">{{ fmt_days(ev.start_date, ev.end_date) }}</td>
     <td>
-      <span class="title">{{ ev.club or ev.title }}</span>
+      <a class="title" style="color:inherit" href="/event/{{ ev.id }}{% if embed %}?embed=1{% endif %}">{{ ev.club or ev.title }}</a>
       {% if ev.status == 'canceled' %}<span class="badge cancel">CANCELED</span>{% endif %}
       {% if ev.status == 'postponed' %}<span class="badge postponed">POSTPONED</span>{% endif %}
       <div class="meta">
@@ -60,6 +60,7 @@
       {%- if ev.stakes_open %}{% set _ = st.append('Open') %}{% endif -%}
       {%- if ev.stakes_amateur %}{% set _ = st.append('Amateur') %}{% endif -%}
       {%- if ev.stakes_puppy %}{% set _ = st.append('Puppy') %}{% endif -%}
+      {%- if ev.stakes_cocker %}{% set _ = st.append('Cocker') %}{% endif -%}
       {{ st | join(' / ') }}{% if ev.water_test %}{% if st %} + {% endif %}Water Test{% endif %}
     </td>
   </tr>

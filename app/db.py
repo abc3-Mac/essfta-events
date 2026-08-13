@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS events (
     stakes_open INTEGER DEFAULT 0,
     stakes_amateur INTEGER DEFAULT 0,
     stakes_puppy INTEGER DEFAULT 0,
+    stakes_cocker INTEGER DEFAULT 0,
     water_test INTEGER DEFAULT 0,
     cost TEXT DEFAULT '',
     entries_close TEXT DEFAULT '',
@@ -75,7 +76,7 @@ CREATE TABLE IF NOT EXISTS event_history (
 
 EVENT_FIELDS = [
     "title", "club", "region", "event_type", "start_date", "end_date", "city", "state", "venue",
-    "stakes_open", "stakes_amateur", "stakes_puppy", "water_test", "cost", "entries_close",
+    "stakes_open", "stakes_amateur", "stakes_puppy", "stakes_cocker", "water_test", "cost", "entries_close",
     "judge1", "judge2", "judge3", "judge4", "apprentice_judges", "link_url", "notes", "status",
 ]
 
@@ -99,6 +100,9 @@ def init():
     cols = [r[1] for r in con.execute("PRAGMA table_info(users)")]
     if "active" not in cols:  # migration for DBs created before user management
         con.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+    ecols = [r[1] for r in con.execute("PRAGMA table_info(events)")]
+    if "stakes_cocker" not in ecols:  # migration: cocker stakes run alongside springer trials
+        con.execute("ALTER TABLE events ADD COLUMN stakes_cocker INTEGER DEFAULT 0")
     con.commit()
     con.close()
 

@@ -166,6 +166,55 @@ def print_view(request: Request):
     return public_headers(resp)
 
 
+# Which region column a no-region event (Hunt Test, Cocker Trial…) lands in on the grid,
+# inferred from its state. Nationals and unmappable events render as full-width bands.
+STATE_REGION = {
+    **{s: "East" for s in ["ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "DE"]},
+    **{s: "Mid East" for s in ["MI", "OH", "PA", "MD", "VA", "WV", "NC", "SC", "GA", "TN", "FL", "AL", "ON", "QC"]},
+    **{s: "Mid West" for s in ["WI", "IL", "MN", "IA", "IN", "KY", "MB"]},
+    **{s: "Rocky Mountain" for s in ["ND", "SD", "NE", "KS", "MO", "OK", "TX", "CO", "WY", "MT", "NM", "SK", "AB"]},
+    **{s: "West" for s in ["WA", "OR", "CA", "ID", "UT", "NV", "AZ", "AK", "HI", "BC"]},
+}
+GRID_COLUMNS = ["West", "Rocky Mountain", "Mid West", "Mid East", "East"]  # west→east like the sketch
+
+
+@app.get("/grid", response_class=HTMLResponse)
+def grid_view(request: Request):
+    f = parse_filters(request)
+    qp = request.query_params
+    year = qp.get("year") or str(date.today().year)
+    events = db.list_events(
+        event_type=f["event_type"], state=f["state"], club=f["club"],
+        date_from=f"{year}-01-01" if qp.get("past") == "1" else max(f"{year}-01-01", date.today().isoformat()),
+        date_to=f"{year}-12-31", include_canceled=f["include_canceled"],
+    )
+    rows = {}   # (start, end) -> {column: [events]} ; "BAND" holds full-width rows
+    for ev in events:
+        col = ev["region"] or STATE_REGION.get(ev["state"] or "")
+        if ev["event_type"] == "National" or not col:
+            col = "BAND"
+        key = (ev["start_date"][:10], ev["end_date"][:10])
+        rows.setdefault(key, {}).setdefault(col, []).append(ev)
+    ordered = [(k, rows[k]) for k in sorted(rows)]
+    resp = templates.TemplateResponse(request, "grid.html", {
+        "rows": ordered, "columns": GRID_COLUMNS, "year": year,
+        "show_past": qp.get("past") == "1", "filters": f, "states": db.distinct_states(),
+        "view": "grid", "embed": qp.get("embed") == "1",
+    })
+    return public_headers(resp)
+
+
+@app.get("/event/{event_id}", response_class=HTMLResponse)
+def event_detail(request: Request, event_id: int):
+    ev = db.get_event(event_id)
+    if not ev or ev["status"] == "archived":
+        return PlainTextResponse("Event not found", status_code=404)
+    resp = templates.TemplateResponse(request, "event_detail.html", {
+        "ev": ev, "embed": request.query_params.get("embed") == "1", "view": None,
+    })
+    return public_headers(resp)
+
+
 @app.get("/embed-demo", response_class=HTMLResponse)
 def embed_demo(request: Request):
     """Mock WordPress page proving the iframe embed — what Field Trial Events will look like."""
@@ -278,6 +327,7 @@ def event_from_form(form, user):
         "stakes_open": 1 if form.get("stakes_open") else 0,
         "stakes_amateur": 1 if form.get("stakes_amateur") else 0,
         "stakes_puppy": 1 if form.get("stakes_puppy") else 0,
+        "stakes_cocker": 1 if form.get("stakes_cocker") else 0,
         "water_test": 1 if form.get("water_test") else 0,
         "cost": form.get("cost", "").strip(),
         "entries_close": form.get("entries_close", "").strip(),

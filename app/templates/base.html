@@ -13,6 +13,7 @@
 <div class="embed-bar">
   <a href="/?embed=1" class="{% if view == 'list' %}on{% endif %}">List</a>
   <a href="/calendar?embed=1" class="{% if view == 'calendar' %}on{% endif %}">Calendar</a>
+  <a href="/grid?embed=1" class="{% if view == 'grid' %}on{% endif %}">Grid</a>
   <span class="legend">
   {% for r in REGIONS %}<span class="chip" style="background:{{ REGION_COLORS[r] }}"></span>{{ r }}&nbsp;{% endfor %}
   </span>
@@ -24,6 +25,7 @@
   <nav>
     <a href="/" class="{% if view == 'list' %}on{% endif %}">List</a>
     <a href="/calendar" class="{% if view == 'calendar' %}on{% endif %}">Calendar</a>
+    <a href="/grid" class="{% if view == 'grid' %}on{% endif %}">Grid</a>
     <a href="/print">Printable</a>
     <a href="/events.ics">iCal</a>
     <a href="/dashboard" class="gov-link">Governor sign-in</a>

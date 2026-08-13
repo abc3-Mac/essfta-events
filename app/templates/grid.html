@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Grid — ESSFTA Field Events{% endblock %}
+{% block content %}
+<form class="filters" method="get">
+  <label>Type
+    <select name="type">
+      <option value="">All</option>
+      {% for t in EVENT_TYPES %}<option value="{{ t }}" {% if filters.event_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Year
+    <select name="year">
+      {% for y in [2026, 2027] %}<option value="{{ y }}" {% if year == y|string %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select>
+  </label>
+  <label><input type="checkbox" name="past" value="1" {% if show_past %}checked{% endif %}> include past</label>
+  <label><input type="checkbox" name="hide_canceled" value="1" {% if not filters.include_canceled %}checked{% endif %}> hide canceled</label>
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+  <button>Apply</button>
+</form>
+
+<div class="grid-scroll">
+<table class="regiongrid">
+  <tr>
+    <th class="datecol">Date</th>
+    {% for c in columns %}
+    <th style="background: {{ REGION_COLORS[c] }}">{{ c }}</th>
+    {% endfor %}
+  </tr>
+  {% for (start, end), cols in rows %}
+  {% if cols.get('BAND') %}
+  <tr class="bandrow">
+    <td class="datecol">{{ fmt_dates(start, end) }}</td>
+    <td colspan="{{ columns | length }}">
+      {% for ev in cols['BAND'] %}
+      <a class="gcell band {% if ev.status == 'canceled' %}canceled{% endif %}" href="/event/{{ ev.id }}{% if embed %}?embed=1{% endif %}">
+        {{ ev.club or ev.title }}{% if ev.event_type != 'Field Trial' %} — {{ ev.event_type }}{% endif %}
+        {% if ev.city or ev.state %}<span class="gloc">{{ ev.city }}{% if ev.city and ev.state %}, {% endif %}{{ ev.state }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </td>
+  </tr>
+  {% endif %}
+  {% if cols.keys() | reject('equalto', 'BAND') | list %}
+  <tr>
+    <td class="datecol">{{ fmt_dates(start, end) }}</td>
+    {% for c in columns %}
+    <td>
+      {% for ev in cols.get(c, []) %}
+      <a class="gcell {% if ev.status == 'canceled' %}canceled{% endif %}" href="/event/{{ ev.id }}{% if embed %}?embed=1{% endif %}"
+         style="border-left-color: {{ REGION_COLORS[c] }}">
+        <span class="gclub">{{ ev.club or ev.title }}</span>
+        {% if ev.event_type != 'Field Trial' %}<span class="gtype">{{ ev.event_type }}</span>{% endif %}
+        {% if ev.stakes_cocker %}<span class="gtype">+ Cocker stakes</span>{% endif %}
+        {% if ev.city or ev.state %}<span class="gloc">{{ ev.city }}{% if ev.city and ev.state %}, {% endif %}{{ ev.state }}</span>{% endif %}
+        {% if ev.status == 'canceled' %}<span class="gtype" style="color:#a02020">CANCELED</span>{% endif %}
+      </a>
+      {% endfor %}
+    </td>
+    {% endfor %}
+  </tr>
+  {% endif %}
+  {% endfor %}
+</table>
+</div>
+<p style="font-size:12.5px;color:#55606e">Click any entry for full details — stakes, judges, entry fee, closing date.</p>
+{% endblock %}
