@@ -300,7 +300,7 @@ def dashboard(request: Request):
     today = date.today().isoformat()
     upcoming = [e for e in events if e["end_date"][:10] >= today]
     past = [e for e in events if e["end_date"][:10] < today][::-1]
-    archived = db.list_events(region=region, status="archived") if user["role"] == "admin" else []
+    archived = db.list_events(region=region, status="archived")  # governors: own region; admins: filterable
     return templates.TemplateResponse(request, "dashboard.html", {
         "user": user, "csrf": sess["csrf"], "upcoming": upcoming, "past": past,
         "archived": archived[::-1], "region_filter": region,
