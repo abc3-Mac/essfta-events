@@ -303,6 +303,14 @@ def can_edit(user, ev) -> bool:
     return ev["region"] == user["region"] and user["region"] is not None
 
 
+@app.get("/help", response_class=HTMLResponse)
+def help_page(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request, "help.html", {"user": user})
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     user, sess, redir = require_user(request)

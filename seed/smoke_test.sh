@@ -115,7 +115,14 @@ curl -s -o /dev/null -X POST "$BASE/bulk/undo" -H "$C" -d "csrf=$CSRF&batch_id=$
 RFA=$(sqlite3 "$DB" "SELECT status FROM events WHERE source='rollforward'")
 ck "$RFA" "archived" "rollforward undo archived the created event"
 
-# 14. public pages + headers
+# 14. help page: signed-in only, role-aware
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/help")
+ck "$code" 303 "help redirects anonymous to login"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/help" -H "$C")
+ck "$code" 200 "governor sees help"
+curl -s "$BASE/help" -H "$CA" | grep -q "Administrator tools" && ck ok ok "admin help shows admin tools" || ck no ok "admin help shows admin tools"
+
+# 15. public pages + headers
 curl -s -D - -o /dev/null "$BASE/" | grep -qi "frame-ancestors" && ck ok ok "CSP frame-ancestors on public page" || ck no ok "CSP frame-ancestors"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/events.ics"); ck "$code" 200 "iCal feed"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/print");      ck "$code" 200 "print view"

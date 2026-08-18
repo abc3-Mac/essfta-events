@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Help — ESSFTA Field Events{% endblock %}
+{% block content %}
+<div class="dash-head">
+  <h2>Help</h2>
+  <a class="btn small ghost" href="/dashboard">&larr; back to the dashboard</a>
+</div>
+
+<p style="max-width:64em">This page explains every button on the
+{% if user.role == 'admin' %}administrator{% else %}governor{% endif %} dashboard.
+The short version: <strong>nothing you do here can destroy an event</strong> — everything
+can be undone, and every change is recorded with your name on it.</p>
+
+<ul>
+  <li><a href="#add">Adding a single event</a></li>
+  <li><a href="#edit">Editing an event</a></li>
+  <li><a href="#cancel">Cancel vs Hide{% if user.role == 'admin' %} vs Remove{% endif %} — which one do I want?</a></li>
+  <li><a href="#excel">Adding a whole schedule from Excel</a></li>
+  <li><a href="#bulk">Bulk hide / unhide (e.g. "hide everything before today")</a></li>
+  <li><a href="#roll">Roll a season forward (copy last year's trials into next year)</a></li>
+  <li><a href="#undo">Undoing a bulk mistake</a></li>
+  <li><a href="#public">What the public actually sees</a></li>
+  {% if user.role == 'admin' %}<li><a href="#admin">Administrator tools</a></li>{% endif %}
+</ul>
+
+<h3 id="add">Adding a single event</h3>
+<p>Click <strong>+ Add event</strong>. Title and first day are the only required fields —
+you can save with just those and come back later for judges, fees, and links.
+The days of the week are worked out from the dates automatically; never type them.
+{% if user.role == 'governor' %}Events you add always belong to your region ({{ user.region }}),
+whatever else is on the form.{% endif %}</p>
+
+<h3 id="edit">Editing an event</h3>
+<p>Click <strong>Edit</strong> on any row. {% if user.role == 'governor' %}You can edit events
+in your own region only.{% else %}Admins can edit any event, in any region or none.{% endif %}
+Change the dates and the calendar, grid, and printable page all update themselves.</p>
+
+<h3 id="cancel">Cancel vs Hide{% if user.role == 'admin' %} vs Remove{% endif %}</h3>
+<ul>
+  <li><strong>Cancel</strong> — the trial is off, and you want everyone to know.
+  It stays on the public calendar, struck through and marked CANCELED.
+  Use this when a trial was announced and then called off. <em>Reinstate</em> undoes it.</li>
+  <li><strong>Hide</strong> — take it off the public site without changing anything.
+  The event stays right where it is on your dashboard with a gray <em>hidden</em> tag,
+  and <em>Unhide</em> puts it back. Use this for events that shouldn't be shown
+  (old trials, placeholders, not-yet-confirmed dates).</li>
+  {% if user.role == 'admin' %}
+  <li><strong>Remove</strong> (admins only) — for events that shouldn't be on anyone's list
+  at all, e.g. a duplicate created by mistake. It moves to the "Removed events" section at
+  the bottom of the dashboard, where <em>Restore</em> brings it back. Even Remove is not
+  a true delete — the event and its whole history are kept.</li>
+  {% endif %}
+</ul>
+
+<h3 id="excel">Adding a whole schedule from Excel</h3>
+<p>Open <strong>Bulk add from a spreadsheet</strong> on the dashboard. Download the template
+(it's the familiar interclub schedule format), fill one row per trial, and upload it.
+Rows whose club and first day are already on the calendar are skipped, so uploading the
+same file twice is harmless. The upload <em>creates</em> events only — it never changes
+existing ones. After the upload, open each new event to add judges, fees, and links.</p>
+
+<h3 id="bulk">Bulk hide / unhide</h3>
+<p><strong>Bulk hide / unhide</strong> on the dashboard changes many events in one step —
+for example, hiding every trial from January 1st up to today. Pick the action and the date
+range{% if user.role == 'admin' %} and region{% endif %}, and click Preview. You always get
+the full list of matching events, with a count, <em>before</em> anything happens; nothing
+changes until you confirm. {% if user.role == 'governor' %}It only ever touches
+{{ user.region }} events.{% endif %}</p>
+
+<h3 id="roll">Roll a season forward</h3>
+<p>Trials mostly run on the same weekend every year. <strong>Roll a season forward</strong>
+copies a year's trials into the next year in one step: each event lands on the
+<em>same weekend and the same days of the week</em> (a Saturday–Sunday trial stays
+Saturday–Sunday). Club, city, state, grounds, and stakes carry over. Judges, fees,
+closing dates, links, and notes do <em>not</em> — they change every year, so the new
+events start blank.</p>
+<p>The preview shows every proposed event with its new dates. Untick any you don't want.
+Trials already entered for the new year are skipped automatically, and canceled trials
+are not copied. After creating, open each event to adjust its exact date or add judges
+as they're confirmed.</p>
+
+<h3 id="undo">Undoing a bulk mistake</h3>
+<p>Every bulk run — a bulk hide, a bulk unhide, a roll-forward — is saved as a
+<em>batch</em>. The page that ran it shows an <strong>Undo</strong> button immediately
+afterward, and the Bulk hide / unhide page lists recent batches with their Undo buttons,
+so you can also undo later. Undo puts every event the batch touched back exactly as it was.</p>
+
+<h3 id="public">What the public actually sees</h3>
+<p>The public list, calendar, and grid show <strong>upcoming</strong> events only —
+past events drop off by themselves the day after they end (they're still there via the
+"include past events" link, and on your dashboard under "Past events"). Canceled events
+stay visible, struck through. Hidden and removed events never appear. The printable page
+shows the whole chosen year. The iCal feed carries scheduled events only.</p>
+
+{% if user.role == 'admin' %}
+<h3 id="admin">Administrator tools</h3>
+<ul>
+  <li><strong>Manage governors</strong> (<a href="/users">/users</a>) — add a governor
+  (the password is generated and shown exactly once — copy it before leaving the page),
+  reset a password, deactivate an account (they can no longer sign in; their events and
+  history remain). The "Last signed in" column answers "has this governor actually been in?"</li>
+  <li><strong>Audit log</strong> (<a href="/audit">/audit</a>) — every sign-in, failed
+  attempt (shaded red), and sign-out, filterable by account and date, plus a feed of
+  recent event changes with who made them. Failed attempts from an unfamiliar IP in a
+  cluster mean someone is guessing passwords — the built-in rate limit slows them down,
+  but tell Albert.</li>
+  <li><strong>Region on the bulk pages</strong> — admins can point bulk actions and
+  roll-forward at any region, or at the no-region events (Hunt Tests, Nationals, seminars).</li>
+</ul>
+{% endif %}
+
+<p style="margin-top:24px"><small>Questions or something not covered here — email Albert.</small></p>
+{% endblock %}
