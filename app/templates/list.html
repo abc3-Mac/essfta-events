@@ -25,7 +25,7 @@
       {% for y in [2026, 2027] %}<option value="{{ y }}" {% if year == y|string %}selected{% endif %}>{{ y }}</option>{% endfor %}
     </select>
   </label>
-  <label><input type="checkbox" name="past" value="1" {% if show_past %}checked{% endif %}> include past</label>
+  {% if can_past %}<label><input type="checkbox" name="past" value="1" {% if show_past %}checked{% endif %}> include past</label>{% endif %}
   <label><input type="checkbox" name="hide_canceled" value="1" {% if not filters.include_canceled %}checked{% endif %}> hide canceled</label>
   {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
   <button>Apply</button>

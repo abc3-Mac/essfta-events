@@ -30,7 +30,7 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/events/$MW_ID/edit" -H "$C"
 ck "$code" 404 "east blocked from Mid West event"
 
 # 5. east CAN open own event
-E_ID=$(sqlite3 "$(dirname "$0")/../data/events.db" "SELECT id FROM events WHERE region='East' LIMIT 1")
+E_ID=$(sqlite3 "$(dirname "$0")/../data/events.db" "SELECT id FROM events WHERE region='East' AND status='scheduled' AND end_date >= date('now') LIMIT 1")
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/events/$E_ID/edit" -H "$C")
 ck "$code" 200 "east can edit East event"
 
@@ -185,6 +185,32 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/help" -H "$C")
 ck "$code" 200 "governor sees help"
 curl -s "$BASE/help" -H "$CA" | grep -q "Administrator tools" && ck ok ok "admin help shows admin tools" || ck no ok "admin help shows admin tools"
 
+# 14d. public past-events toggle: default ALLOWS the public past option; admins can turn it off
+P_ID=$(sqlite3 "$DB" "SELECT id FROM events WHERE end_date < date('now') AND status='scheduled' AND hidden=0 LIMIT 1")
+curl -s "$BASE/?past=1&year=2026" | grep -q "event/$P_ID\"" && ck ok ok "default: anon past=1 shows past events" || ck no ok "default: anon past=1 shows past events"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/event/$P_ID")
+ck "$code" 200 "default: past event detail public"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings" -H "$C" -d "csrf=$CSRF&public_past=0")
+ck "$code" 403 "governor blocked from /settings"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings" -H "$CA" -d "csrf=$CSRFA&public_past=0")
+ck "$code" 303 "admin turns public past events off"
+curl -s "$BASE/?past=1&year=2026" | grep -q "event/$P_ID\"" && ck no ok "toggled off: anon past=1 hides past events" || ck ok ok "toggled off: anon past=1 hides past events"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/event/$P_ID")
+ck "$code" 404 "toggled off: past event detail 404s for the public"
+curl -s "$BASE/?past=1&year=2026" -H "$C" | grep -q "event/$P_ID\"" && ck ok ok "toggled off: signed-in still sees past" || ck no ok "toggled off: signed-in still sees past"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/calendar?month=2026-01")
+ck "$code" 303 "toggled off: anon calendar bounced off a past month"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/calendar?month=2026-01" -H "$C")
+ck "$code" 200 "toggled off: signed-in calendar reaches past months"
+OLDICS=$(curl -s "$BASE/events.ics" | grep -o 'DTSTART;VALUE=DATE:[0-9]*' | sort | head -1 | sed 's/.*://')
+TODAYC=$(date +%Y%m%d)
+[ -z "$OLDICS" ] || [ "$OLDICS" -ge "$TODAYC" ] && ck ok ok "toggled off: iCal carries no past events" || ck no ok "toggled off: iCal carries no past events (oldest $OLDICS)"
+PRINTJAN=$(curl -s "$BASE/print?year=2026" | grep -c "JANUARY")
+ck "$PRINTJAN" 0 "toggled off: public printable starts at today"
+curl -s -o /dev/null -X POST "$BASE/settings" -H "$CA" -d "csrf=$CSRFA&public_past=1"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/event/$P_ID")
+ck "$code" 200 "toggled back on: past detail public again"
+
 # 15. public pages + headers
 curl -s -D - -o /dev/null "$BASE/" | grep -qi "frame-ancestors" && ck ok ok "CSP frame-ancestors on public page" || ck no ok "CSP frame-ancestors"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/events.ics"); ck "$code" 200 "iCal feed"
@@ -192,6 +218,6 @@ code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/print");      ck "$code" 20
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/embed-demo"); ck "$code" 200 "embed demo"
 
 # cleanup test artifacts (rollforward events + batches too, so reruns start clean)
-sqlite3 "$(dirname "$0")/../data/events.db" "DELETE FROM events WHERE title='SMOKE TEST EVENT'; DELETE FROM users WHERE username='smoketest'; DELETE FROM events WHERE source='rollforward'; DELETE FROM batches; DELETE FROM event_history WHERE batch_id IS NOT NULL;"
+sqlite3 "$(dirname "$0")/../data/events.db" "DELETE FROM events WHERE title='SMOKE TEST EVENT'; DELETE FROM users WHERE username='smoketest'; DELETE FROM events WHERE source='rollforward'; DELETE FROM batches; DELETE FROM event_history WHERE batch_id IS NOT NULL; DELETE FROM settings;"
 echo; echo "RESULT: $pass passed, $fail failed"
 [ "$fail" = 0 ]

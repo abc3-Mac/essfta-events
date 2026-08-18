@@ -44,6 +44,16 @@
     </select>
   </label>
 </form>
+
+<form class="filters" method="post" action="/settings">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <strong style="font-size:13px">Public site:</strong>
+  <label><input type="checkbox" name="public_past" value="1" {% if public_past %}checked{% endif %}>
+    let the public tick "include past events"</label>
+  <button class="btn small">Save</button>
+  <small>Unticked = visitors see upcoming events only, everywhere (list, calendar, grid,
+  printable, iCal). Signed-in governors and admins always see everything.</small>
+</form>
 {% endif %}
 
 <form id="bulkbar" method="post" action="/bulk/selected"

@@ -84,6 +84,12 @@ CREATE TABLE IF NOT EXISTS login_events (
 );
 CREATE INDEX IF NOT EXISTS idx_login_events_at ON login_events(at);
 CREATE INDEX IF NOT EXISTS idx_login_events_user ON login_events(username);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_by TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS batches (
     id TEXT PRIMARY KEY,
     created_by TEXT NOT NULL,
@@ -286,6 +292,27 @@ def set_hidden(event_id, hidden, username, batch_id=None):
     con.execute(
         "UPDATE events SET hidden=?, updated_by=?, updated_at=? WHERE id=?",
         (1 if hidden else 0, username, now(), event_id),
+    )
+    con.commit()
+    con.close()
+
+
+# ---------- site settings ----------
+
+def get_setting(key, default=""):
+    con = connect()
+    row = con.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    con.close()
+    return row["value"] if row else default
+
+
+def set_setting(key, value, username):
+    con = connect()
+    con.execute(
+        "INSERT INTO settings (key, value, updated_by, updated_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_by=excluded.updated_by, "
+        "updated_at=excluded.updated_at",
+        (key, value, username, now()),
     )
     con.commit()
     con.close()

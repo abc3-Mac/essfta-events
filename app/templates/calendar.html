@@ -26,7 +26,7 @@
 </form>
 
 <div class="cal-nav">
-  <a href="?month={{ prev_m }}{% if embed %}&embed=1{% endif %}">&larr; prev</a>
+  {% if allow_prev %}<a href="?month={{ prev_m }}{% if embed %}&embed=1{% endif %}">&larr; prev</a>{% endif %}
   <h2>{{ month_label }}</h2>
   <a href="?month={{ next_m }}{% if embed %}&embed=1{% endif %}">next &rarr;</a>
 </div>

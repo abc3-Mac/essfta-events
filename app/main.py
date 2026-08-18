@@ -75,6 +75,16 @@ def current_user(request: Request):
     return user, sess
 
 
+def signed_in(request: Request) -> bool:
+    return current_user(request)[0] is not None
+
+
+def past_visible(request: Request) -> bool:
+    """May this viewer see past events? Signed-in users always can; the public can
+    when the admin toggle allows it (the default). Patty can switch it off."""
+    return signed_in(request) or db.get_setting("public_past", "1") == "1"
+
+
 def parse_filters(request: Request):
     qp = request.query_params
     return {
@@ -104,9 +114,11 @@ def list_view(request: Request):
     f = parse_filters(request)
     qp = request.query_params
     year = qp.get("year") or str(date.today().year)
+    can_past = past_visible(request)
+    show_past = qp.get("past") == "1" and can_past
     events = db.list_events(
         region=f["region"], event_type=f["event_type"], state=f["state"], club=f["club"],
-        date_from=f"{year}-01-01" if qp.get("past") == "1" else max(f"{year}-01-01", date.today().isoformat()),
+        date_from=f"{year}-01-01" if show_past else max(f"{year}-01-01", date.today().isoformat()),
         date_to=f"{year}-12-31", include_canceled=f["include_canceled"],
     )
     months = {}
@@ -114,7 +126,7 @@ def list_view(request: Request):
         key = ev["start_date"][:7]
         months.setdefault(key, []).append(ev)
     resp = templates.TemplateResponse(request, "list.html", {
-        "months": months, "filters": f, "year": year, "show_past": qp.get("past") == "1",
+        "months": months, "filters": f, "year": year, "show_past": show_past, "can_past": can_past,
         "states": db.distinct_states(), "view": "list",
         "embed": qp.get("embed") == "1",
         "month_name": lambda k: date.fromisoformat(k + "-01").strftime("%B %Y"),
@@ -125,8 +137,15 @@ def list_view(request: Request):
 @app.get("/calendar", response_class=HTMLResponse)
 def calendar_view(request: Request):
     f = parse_filters(request)
-    ym = request.query_params.get("month") or date.today().strftime("%Y-%m")
+    can_past = past_visible(request)
+    this_ym = date.today().strftime("%Y-%m")
+    ym = request.query_params.get("month") or this_ym
+    if not can_past and ym < this_ym:  # the public can't browse into past months
+        embed_q = "&embed=1" if request.query_params.get("embed") == "1" else ""
+        return RedirectResponse(f"/calendar?month={this_ym}{embed_q}", status_code=303)
     first, last = month_bounds(ym)
+    if not can_past:
+        first = max(first, date.today().isoformat())  # no already-ended events this month either
     events = db.list_events(
         region=f["region"], event_type=f["event_type"], state=f["state"], club=f["club"],
         date_from=first, date_to=last, include_canceled=f["include_canceled"],
@@ -146,6 +165,7 @@ def calendar_view(request: Request):
     resp = templates.TemplateResponse(request, "calendar.html", {
         "weeks": weeks, "by_day": by_day, "ym": ym, "month_label": date(y, m, 1).strftime("%B %Y"),
         "prev_m": prev_m, "next_m": next_m, "this_month": m,
+        "allow_prev": can_past or prev_m >= this_ym,
         "filters": f, "states": db.distinct_states(), "view": "calendar",
         "embed": request.query_params.get("embed") == "1", "today": date.today().isoformat(),
     })
@@ -155,7 +175,10 @@ def calendar_view(request: Request):
 @app.get("/print", response_class=HTMLResponse)
 def print_view(request: Request):
     year = request.query_params.get("year") or str(date.today().year)
-    events = db.list_events(date_from=f"{year}-01-01", date_to=f"{year}-12-31")
+    date_from = f"{year}-01-01"
+    if not past_visible(request):  # the public's printable page starts at today
+        date_from = max(date_from, date.today().isoformat())
+    events = db.list_events(date_from=date_from, date_to=f"{year}-12-31")
     months = {}
     for ev in events:
         months.setdefault(ev["start_date"][:7], []).append(ev)
@@ -183,9 +206,11 @@ def grid_view(request: Request):
     f = parse_filters(request)
     qp = request.query_params
     year = qp.get("year") or str(date.today().year)
+    can_past = past_visible(request)
+    show_past = qp.get("past") == "1" and can_past
     events = db.list_events(
         event_type=f["event_type"], state=f["state"], club=f["club"],
-        date_from=f"{year}-01-01" if qp.get("past") == "1" else max(f"{year}-01-01", date.today().isoformat()),
+        date_from=f"{year}-01-01" if show_past else max(f"{year}-01-01", date.today().isoformat()),
         date_to=f"{year}-12-31", include_canceled=f["include_canceled"],
     )
     rows = {}   # (start, end) -> {column: [events]} ; "BAND" holds full-width rows
@@ -198,7 +223,7 @@ def grid_view(request: Request):
     ordered = [(k, rows[k]) for k in sorted(rows)]
     resp = templates.TemplateResponse(request, "grid.html", {
         "rows": ordered, "columns": GRID_COLUMNS, "year": year,
-        "show_past": qp.get("past") == "1", "filters": f, "states": db.distinct_states(),
+        "show_past": show_past, "can_past": can_past, "filters": f, "states": db.distinct_states(),
         "view": "grid", "embed": qp.get("embed") == "1",
     })
     return public_headers(resp)
@@ -209,10 +234,11 @@ def event_detail(request: Request, event_id: int):
     ev = db.get_event(event_id)
     if not ev or ev["status"] == "archived":
         return PlainTextResponse("Event not found", status_code=404)
-    if ev.get("hidden"):
-        viewer, _ = current_user(request)
-        if not viewer:  # hidden events stay reachable for signed-in governors/admins
-            return PlainTextResponse("Event not found", status_code=404)
+    if ev.get("hidden") and not signed_in(request):
+        # hidden events are signed-in only, whatever the past-events toggle says
+        return PlainTextResponse("Event not found", status_code=404)
+    if ev["end_date"][:10] < date.today().isoformat() and not past_visible(request):
+        return PlainTextResponse("Event not found", status_code=404)
     resp = templates.TemplateResponse(request, "event_detail.html", {
         "ev": ev, "embed": request.query_params.get("embed") == "1", "view": None,
     })
@@ -227,7 +253,9 @@ def embed_demo(request: Request):
 
 @app.get("/events.ics")
 def ical():
-    events = db.list_events(include_canceled=False)
+    # feed readers carry no session, so the public toggle decides for everyone
+    date_from = None if db.get_setting("public_past", "1") == "1" else date.today().isoformat()
+    events = db.list_events(include_canceled=False, date_from=date_from)
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ESSFTA//Field Events//EN",
              "X-WR-CALNAME:ESSFTA Field Events"]
     for ev in events:
@@ -326,6 +354,7 @@ def dashboard(request: Request):
     return templates.TemplateResponse(request, "dashboard.html", {
         "user": user, "csrf": sess["csrf"], "upcoming": upcoming, "past": past,
         "hidden": hidden, "archived": archived[::-1], "region_filter": region,
+        "public_past": db.get_setting("public_past", "1") == "1",
     })
 
 
@@ -663,6 +692,17 @@ def users_page(request: Request):
     if redir:
         return redir
     return render_users(request, user, sess)
+
+
+@app.post("/settings")
+def save_settings(request: Request, public_past: str = Form("0"), csrf: str = Form(...)):
+    user, sess, redir = require_admin(request)
+    if redir:
+        return redir
+    if csrf != sess["csrf"] or public_past not in ("0", "1"):
+        return PlainTextResponse("Bad request", status_code=403)
+    db.set_setting("public_past", public_past, user["username"])
+    return RedirectResponse("/dashboard", status_code=303)
 
 
 @app.get("/audit", response_class=HTMLResponse)
