@@ -65,6 +65,50 @@ def build_template(region: str | None = None) -> bytes:
     return buf.getvalue()
 
 
+def build_export(events, region: str | None, year: int) -> bytes:
+    """The region's current events in the same familiar template layout, plus an
+    EVENT ID column so an edited re-upload can update events in place."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{region or 'Field Trial'} {year}"[:31]
+    banner = ws.cell(row=1, column=1, value=f"REGION: {region}" if region else "REGION: (none — National / other)")
+    banner.font = Font(name="Arial", bold=True, size=13, color="FFFFFF")
+    banner.fill = PatternFill("solid", fgColor=REGION_FILLS.get(region or "", "434549"))
+    banner.alignment = Alignment(horizontal="center")
+    all_headers = [h for h, _ in HEADERS] + ["STATUS (info only)", "EVENT ID (do not change)"]
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(all_headers))
+    ws.append(all_headers)
+    for i, width in enumerate([w for _, w in HEADERS] + [16, 24], 1):
+        ws.column_dimensions[ws.cell(row=2, column=i).column_letter].width = width
+        c = ws.cell(row=2, column=i)
+        c.font = Font(name="Arial", bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="681E12")
+        c.alignment = Alignment(horizontal="center", wrap_text=True)
+    for ev in events:
+        stakes = " / ".join(s for s, on in [("OPEN", ev["stakes_open"]), ("AMATEUR", ev["stakes_amateur"]),
+                                            ("PUPPY", ev["stakes_puppy"])] if on)
+        ws.append([
+            ev["start_date"][:10],
+            ev["end_date"][:10] if ev["end_date"][:10] != ev["start_date"][:10] else "",
+            ev["club"] or ev["title"],
+            ev["state"], ev["city"],
+            stakes, "YES" if ev["stakes_cocker"] else "-", "YES" if ev["water_test"] else "-",
+            ev["status"] + (" +hidden" if ev.get("hidden") else ""),
+            ev["id"],
+        ])
+    note = ws.cell(row=ws.max_row + 2, column=1,
+                   value="Edit dates/clubs/cities/stakes and re-upload to UPDATE these events in place "
+                         "(you'll see every change before it's saved). Leave EVENT ID untouched. "
+                         "Rows you add without an ID become new events. To make NEXT year's schedule "
+                         "from this one, change the dates and tick 'treat every row as new' when uploading. "
+                         "The STATUS column is informational and ignored on upload.")
+    note.font = Font(name="Arial", italic=True, size=9)
+    ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=len(all_headers))
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _norm(v):
     return str(v).strip() if v is not None else ""
 
@@ -116,6 +160,11 @@ def parse_upload(data: bytes):
             for c_i, t in enumerate(texts):
                 if not t:
                     continue
+                if "EVENT ID" in t or t == "ID":
+                    cols["id"] = c_i
+                    continue
+                if "STATUS" in t:
+                    continue  # informational on export, never read back
                 if "WEEK" in t and "DAY" not in t:
                     continue
                 if "DATE" in t or "DAY (" in t or t.startswith("FIRST DAY") or t.startswith("LAST DAY"):
@@ -158,7 +207,15 @@ def parse_upload(data: bytes):
             start, end = end, start
         stakes = _norm(get("stakes")).upper()
         yes = lambda v: _norm(v).upper() in ("YES", "Y", "X", "TRUE") or "YES" in _norm(v).upper()
+        row_id = None
+        if "id" in cols:
+            raw_id = get("id")
+            try:
+                row_id = int(float(raw_id)) if _norm(raw_id) else None
+            except (TypeError, ValueError):
+                errors.append(f"Row {r_i} ({club}): EVENT ID '{_norm(raw_id)}' isn't a number — treated as a new event")
         rows.append({
+            "id": row_id,
             "title": club,
             "club": club,
             "start_date": start,

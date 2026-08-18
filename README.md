@@ -35,6 +35,13 @@ the whole thing embeds by iframe into the ESSFTA main WordPress site.
   hard-deleted.
 - `/bulk` — hide/unhide events by date range (admins: also remove/restore, any
   region). Preview first, then confirm; every run is a batch with one-click Undo.
+- **Ticked events** — checkboxes on every dashboard table + an action bar:
+  Hide / Unhide / Cancel / Reinstate (admins: Remove / Restore) / **shift dates
+  by N days**. Each row also has **Copy → next year** (same weekend + weekday).
+- `/excel` — spreadsheet hub: blank template, **export of current events (with an
+  EVENT ID column)**, upload. An uploaded file with IDs updates those events in
+  place after a confirm-every-change preview; "treat every row as new" drafts
+  next year's schedule from this year's export. All undoable as batches.
 - `/rollforward` — copy a region's season into the next year: dates shift to the
   same weekend + day of week, club/location/stakes carry over, judges/fees/links
   start blank. Duplicate-aware (skips clubs already on the target-year calendar

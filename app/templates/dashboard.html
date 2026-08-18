@@ -1,48 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — ESSFTA Field Events{% endblock %}
+{% block bodyclass %} tools{% endblock %}
 {% block content %}
 <div class="dash-head">
   <h2>{% if user.role == 'admin' %}All events{% else %}{{ user.region }} region events{% endif %}</h2>
   <span class="who">signed in as {{ user.display_name }}
     ({% if user.role == 'admin' %}admin{% else %}{{ user.region }} governor{% endif %})</span>
-  <a class="btn small" href="/events/new">+ Add event</a>
-  <a class="btn small ghost" href="/bulk">Bulk hide / unhide</a>
-  <a class="btn small ghost" href="/rollforward">Roll a season forward</a>
-  {% if user.role == 'admin' %}<a class="btn small ghost" href="/users">Manage governors</a>
-  <a class="btn small ghost" href="/audit">Audit log</a>{% endif %}
-  <a class="btn small ghost" href="/help">Help</a>
   <form method="post" action="/logout"><button class="btn small ghost">Sign out</button></form>
 </div>
 
-<details class="past-block" style="margin:0 0 10px">
-  <summary>Bulk add from a spreadsheet</summary>
-  <div style="border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:6px">
-    {% if user.role == 'governor' %}
-    <p style="margin:4px 0"><a class="btn small ghost" href="/template.xlsx">Download the {{ user.region }} Excel template</a>
-    <small>— the familiar schedule format, marked with your region: one row per trial, with an example row to copy.</small></p>
-    {% else %}
-    <p style="margin:4px 0">Download a region-marked template:
-      {% for r in REGIONS %}<a href="/template.xlsx?region={{ r | urlencode }}">{{ r }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
-    </p>
-    {% endif %}
-    <form method="post" action="/import" enctype="multipart/form-data" style="margin:8px 0 4px">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      {% if user.role == 'admin' %}
-      <label style="font-size:13px">Import into region
-        <select name="region">
-          {% for r in REGIONS %}<option>{{ r }}</option>{% endfor %}
-          <option value="">— none (National / other) —</option>
-        </select>
-      </label>
-      {% endif %}
-      <input type="file" name="file" accept=".xlsx" required>
-      <button class="btn small">Upload &amp; add events</button>
-    </form>
-    <small>Each row becomes an event{% if user.role == 'governor' %} in your region{% endif %}.
-    Rows already on the calendar are skipped, so uploading twice is safe. You can open each
-    added event afterward to fill in judges, fees, and links.</small>
-  </div>
-</details>
+<div class="tool-cards">
+  <a class="tool-card" href="/events/new">
+    <h3>+ Add an event</h3><p>One trial at a time — title and dates now, judges and fees later.</p>
+  </a>
+  <a class="tool-card" href="/excel">
+    <h3>Spreadsheet (Excel)</h3><p>Download your schedule, edit in Excel, upload the changes — or draft next year from this year's file.</p>
+  </a>
+  <a class="tool-card" href="/bulk">
+    <h3>Bulk hide / unhide</h3><p>Take a whole date range off the public views (or put it back). Preview first, undo after.</p>
+  </a>
+  <a class="tool-card" href="/rollforward">
+    <h3>Roll a season forward</h3><p>Copy a year's trials to the next year — same weekends, same weekdays.</p>
+  </a>
+  {% if user.role == 'admin' %}
+  <a class="tool-card" href="/users">
+    <h3>Manage governors</h3><p>Accounts, passwords, last sign-in per governor.</p>
+  </a>
+  <a class="tool-card" href="/audit">
+    <h3>Audit log</h3><p>Who signed in (or tried to), and who changed what.</p>
+  </a>
+  {% endif %}
+  <a class="tool-card" href="/help">
+    <h3>Help</h3><p>Plain-English guide to every button here.</p>
+  </a>
+</div>
 
 {% if user.role == 'admin' %}
 <form class="filters" method="get">
@@ -55,12 +46,39 @@
 </form>
 {% endif %}
 
+<form id="bulkbar" method="post" action="/bulk/selected"
+      onsubmit="return confirm('Apply this to every ticked event?');">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+</form>
+<div class="bulkbar-ui">
+  <strong>Ticked events:</strong>
+  <select name="action" form="bulkbar" id="bulk-action">
+    <option value="hide">Hide from public views</option>
+    <option value="unhide">Unhide</option>
+    <option value="cancel">Cancel</option>
+    <option value="reinstate">Reinstate</option>
+    {% if user.role == 'admin' %}
+    <option value="remove">Remove</option>
+    <option value="restore">Restore removed</option>
+    {% endif %}
+    <option value="shift">Shift dates by N days…</option>
+  </select>
+  <label id="days-wrap" style="display:none">by
+    <input type="number" name="days" form="bulkbar" min="-370" max="370" step="1" value="7" style="width:70px"> days
+    <small>(7 = one week later, −7 = one week earlier)</small>
+  </label>
+  <button class="btn small" form="bulkbar">Apply</button>
+  <small>Tick boxes below; the box in a header row ticks a whole section. Every bulk action can be undone.</small>
+</div>
+
 {% macro event_table(evs) %}
 <table class="events">
-  <tr><th>Date</th><th>Club / Event</th><th>City</th><th>State</th><th>Status</th><th></th></tr>
+  <tr><th><input type="checkbox" class="tickall" title="tick all"></th>
+      <th>Date</th><th>Club / Event</th><th>City</th><th>State</th><th>Status</th><th></th></tr>
   {% for ev in evs %}
   <tr class="ev {% if ev.status == 'canceled' %}canceled{% endif %}"
       style="border-left-color: {{ REGION_COLORS.get(ev.region, '#9aa3ad') }}">
+    <td><input type="checkbox" form="bulkbar" name="ids" value="{{ ev.id }}"></td>
     <td>{{ fmt_dates(ev.start_date, ev.end_date) }} <span style="color:#889">{{ ev.start_date[:4] }}</span></td>
     <td><span class="title">{{ ev.club or ev.title }}</span>
         <div class="meta">{{ ev.event_type }}{% if ev.region %} · {{ ev.region }}{% endif %}</div></td>
@@ -107,6 +125,11 @@
         <button class="btn small warn">Remove</button>
       </form>
       {% endif %}
+      <form method="post" action="/events/{{ ev.id }}/copyforward"
+            onsubmit="return confirm('Copy this event to {{ (ev.start_date[:4] | int) + 1 }} on the same weekend? You can adjust it right after.');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn small ghost" title="Copy to next year, same weekend and weekday">Copy → {{ (ev.start_date[:4] | int) + 1 }}</button>
+      </form>
       {% endif %}
     </td>
   </tr>
@@ -115,24 +138,36 @@
 {% endmacro %}
 
 <h3>Upcoming ({{ upcoming | length }})</h3>
+<div class="panel">
 {% if upcoming %}{{ event_table(upcoming) }}{% else %}<p>No upcoming events — add one.</p>{% endif %}
+</div>
 
 <details class="past-block">
   <summary>Past events ({{ past | length }})</summary>
-  {{ event_table(past) }}
+  <div class="panel">{{ event_table(past) }}</div>
 </details>
 
-{% if archived %}
 {% if hidden %}
 <details class="past-block">
   <summary>Hidden from the public views ({{ hidden | length }}) — also listed in place above, marked <em>hidden</em></summary>
-  {{ event_table(hidden) }}
+  <div class="panel">{{ event_table(hidden) }}</div>
 </details>
 {% endif %}
 
 <details class="past-block">
   <summary>Removed events ({{ archived | length }}) — not shown to the public</summary>
-  {{ event_table(archived) }}
+  <div class="panel">{{ event_table(archived) }}</div>
 </details>
-{% endif %}
+
+<script>
+document.getElementById("bulk-action").addEventListener("change", function () {
+  document.getElementById("days-wrap").style.display = this.value === "shift" ? "inline" : "none";
+});
+document.querySelectorAll("input.tickall").forEach(function (all) {
+  all.addEventListener("change", function () {
+    all.closest("table").querySelectorAll('input[name="ids"]')
+       .forEach(function (cb) { cb.checked = all.checked; });
+  });
+});
+</script>
 {% endblock %}

@@ -417,7 +417,71 @@ async def save_event(request: Request, event_id: int):
     return RedirectResponse("/dashboard", status_code=303)
 
 
-# ---------- spreadsheet template download + bulk upload ----------
+# ---------- spreadsheet: template, export, round-trip upload ----------
+
+UPDATE_FIELDS = ["start_date", "end_date", "club", "city", "state",
+                 "stakes_open", "stakes_amateur", "stakes_puppy", "stakes_cocker", "water_test"]
+FIELD_LABELS = {
+    "start_date": "first day", "end_date": "last day", "club": "club", "city": "city",
+    "state": "state", "stakes_open": "Open stake", "stakes_amateur": "Amateur stake",
+    "stakes_puppy": "Puppy stake", "stakes_cocker": "Cocker stakes", "water_test": "water test",
+    "title": "title",
+}
+
+# parsed-but-unconfirmed uploads, keyed by a one-time token (in-memory: this is a
+# single-process app, same as the login rate limiter)
+_pending_imports = {}
+
+
+def _stash_import(username, payload):
+    import secrets
+    import time as _t
+    now_t = _t.time()
+    for k in [k for k, v in _pending_imports.items() if v["exp"] < now_t]:
+        _pending_imports.pop(k, None)
+    tok = secrets.token_hex(8)
+    _pending_imports[tok] = {"u": username, "exp": now_t + 900, **payload}
+    return tok
+
+
+@app.get("/excel", response_class=HTMLResponse)
+def excel_page(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    return templates.TemplateResponse(request, "excel.html", {
+        "user": user, "csrf": sess["csrf"], "years": db.distinct_event_years(),
+        "this_year": date.today().year,
+    })
+
+
+@app.get("/export.xlsx")
+def export_download(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    try:
+        year = int(request.query_params.get("year", date.today().year))
+    except ValueError:
+        return PlainTextResponse("Bad year", status_code=400)
+    if user["role"] == "governor":
+        region = user["region"]
+        scope = region
+    else:
+        region = request.query_params.get("region") or None
+        if region == "NONE" or region not in db.REGIONS:
+            region, scope = (None, "NONE")
+        else:
+            scope = region
+    events = db.bulk_select(f"{year}-01-01", f"{year}-12-31", scope,
+                            ("scheduled", "canceled", "postponed"))
+    fname = f"ESSFTA-{(region or 'other').replace(' ', '-')}-{year}-events.xlsx"
+    return Response(
+        xlsx_io.build_export(events, region, year),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
 
 @app.get("/template.xlsx")
 def template_download(request: Request):
@@ -456,31 +520,116 @@ async def import_xlsx(request: Request):
             "user": user, "created": [], "skipped": [],
             "errors": ["That file could not be read as an Excel (.xlsx) spreadsheet."],
         })
+    if form.get("as_new") == "1":
+        # "treat every row as new" — the make-next-year-from-this-year's-export workflow
+        for row in rows:
+            row["id"] = None
     if user["role"] == "governor":
         region = user["region"]  # always their own, whatever the file says
         if declared and declared != region:
             errors.insert(0, f"Heads up: the spreadsheet is marked {declared}, but you are the {region} "
-                             f"governor, so these events were added to {region}. If that's the wrong file, "
-                             f"hide these events and ask the {declared} governor to upload it.")
+                             f"governor, so new events go to {region}. If that's the wrong file, "
+                             f"ask the {declared} governor to upload it.")
     else:
         picked = form.get("region") or None
         region = declared or (picked if picked in db.REGIONS else None)
         if declared and picked and picked in db.REGIONS and declared != picked:
             errors.insert(0, f"The spreadsheet is marked {declared}, which overrode your {picked} selection.")
-    created, skipped = [], []
-    for row in rows:
+
+    id_rows = [r for r in rows if r.get("id")]
+    new_rows = [r for r in rows if not r.get("id")]
+
+    if not id_rows:
+        # plain template upload: create immediately, exactly as before
+        created, skipped = [], []
+        for row in new_rows:
+            row.pop("id", None)
+            row["region"] = region
+            if db.find_near_duplicate(row["club"], row["start_date"], days=0):
+                skipped.append(f"{row['club']} — {row['start_date']} already on the calendar")
+                continue
+            eid = db.create_event(row, user["username"] + ":xlsx")
+            created.append({**row, "id": eid})
+        return templates.TemplateResponse(request, "import_result.html", {
+            "user": user, "created": created, "updated": [], "skipped": skipped,
+            "errors": errors, "batch_id": None, "csrf": sess["csrf"],
+        })
+
+    # the file carries EVENT IDs: build an update preview, apply nothing yet
+    updates, unchanged = [], 0
+    for row in id_rows:
+        ev = db.get_event(row["id"])
+        if not ev or ev["status"] == "archived":
+            errors.append(f"Row for '{row['club']}': no event #{row['id']} on the calendar — skipped")
+            continue
+        if not can_edit(user, ev):
+            errors.append(f"Row for '{row['club']}': event #{row['id']} is another region's — skipped")
+            continue
+        changes = {}
+        for f in UPDATE_FIELDS:
+            if str(row.get(f, "")) != str(ev[f] if ev[f] is not None else ""):
+                changes[f] = row[f]
+        if "club" in changes and ev["title"] == ev["club"]:
+            changes["title"] = changes["club"]  # derived titles follow the club name
+        if changes:
+            updates.append({"id": ev["id"], "label": ev["club"] or ev["title"],
+                            "old": {f: ev[f] for f in changes}, "changes": changes})
+        else:
+            unchanged += 1
+    creates = []
+    for row in new_rows:
+        row.pop("id", None)
         row["region"] = region
-        con = db.connect()
-        dup = con.execute("SELECT id FROM events WHERE club=? AND start_date=? AND status != 'archived'",
-                          (row["club"], row["start_date"])).fetchone()
-        con.close()
-        if dup:
+        dup = db.find_near_duplicate(row["club"], row["start_date"], days=0)
+        creates.append({"row": row, "dup": dup})
+    token = _stash_import(user["username"], {
+        "updates": [(u["id"], u["changes"]) for u in updates],
+        "creates": [c["row"] for c in creates if not c["dup"]],
+        "errors": errors,
+    })
+    return templates.TemplateResponse(request, "import_preview.html", {
+        "user": user, "csrf": sess["csrf"], "token": token,
+        "updates": updates, "creates": creates, "unchanged": unchanged,
+        "errors": errors, "labels": FIELD_LABELS,
+    })
+
+
+@app.post("/import/apply")
+async def import_apply(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    pending = _pending_imports.pop(form.get("pending", ""), None)
+    import time as _t
+    if not pending or pending["u"] != user["username"] or pending["exp"] < _t.time():
+        return PlainTextResponse("This upload preview expired — please upload the file again.",
+                                 status_code=410)
+    batch = new_batch_id()
+    updated, created, skipped, errors = [], [], [], list(pending["errors"])
+    for event_id, changes in pending["updates"]:
+        ev = db.get_event(event_id)
+        if not ev or not can_edit(user, ev):  # re-checked at apply time, not just preview
+            errors.append(f"Event #{event_id} could not be updated — skipped")
+            continue
+        db.update_event(event_id, changes, user["username"] + ":xlsx", batch_id=batch, action="xlsx-update")
+        updated.append({"id": event_id, "label": ev["club"] or ev["title"], "changes": changes})
+    for row in pending["creates"]:
+        if db.find_near_duplicate(row["club"], row["start_date"], days=0):
             skipped.append(f"{row['club']} — {row['start_date']} already on the calendar")
             continue
-        eid = db.create_event(row, user["username"] + ":xlsx")
+        eid = db.create_event(row, user["username"] + ":xlsx", batch_id=batch)
         created.append({**row, "id": eid})
+    if updated or created:
+        db.create_batch(batch, user["username"], "xlsx-import",
+                        f"spreadsheet: {len(updated)} updated, {len(created)} added", len(updated) + len(created))
+    else:
+        batch = None
     return templates.TemplateResponse(request, "import_result.html", {
-        "user": user, "created": created, "skipped": skipped, "errors": errors,
+        "user": user, "created": created, "updated": updated, "skipped": skipped,
+        "errors": errors, "batch_id": batch, "csrf": sess["csrf"],
     })
 
 
@@ -744,17 +893,122 @@ async def bulk_undo(request: Request, batch_id: str = Form(...), csrf: str = For
     for h in db.batch_history(batch_id):
         snap = _json.loads(h["snapshot_json"]) or {}
         if h["action"] == "create":
-            # a roll-forward created this event: archive it (nothing is ever hard-deleted)
+            # a roll-forward/copy created this event: archive it (nothing is ever hard-deleted)
             db.set_status(h["event_id"], "archived", user["username"], batch_id=batch_id + "-undo")
-        elif h["action"].startswith("hidden:"):
-            db.set_hidden(h["event_id"], snap.get("hidden", 0), user["username"], batch_id=batch_id + "-undo")
         else:
-            db.set_status(h["event_id"], snap.get("status", "scheduled"), user["username"],
-                          batch_id=batch_id + "-undo")
+            # snapshots are taken BEFORE a change, so restoring one restores dates,
+            # status, and hidden flag alike — works for hide, shift, and xlsx edits
+            db.restore_snapshot(h["event_id"], snap, user["username"], batch_id=batch_id + "-undo")
         count += 1
     db.mark_batch_undone(batch_id)
     return render_bulk(request, user, sess,
                        message=f"Batch {batch_id} undone — {count} event{'s' if count != 1 else ''} put back.")
+
+
+@app.post("/bulk/selected")
+async def bulk_selected(request: Request):
+    """The ticked-checkboxes action bar on the dashboard. Every id is re-checked
+    against can_edit server-side — ticking another region's event does nothing."""
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    action = form.get("action", "")
+    if action not in ("hide", "unhide", "cancel", "reinstate", "remove", "restore", "shift"):
+        return PlainTextResponse("Bad request", status_code=400)
+    if action in ("remove", "restore") and user["role"] != "admin":
+        return PlainTextResponse("Admins only", status_code=403)
+    days = 0
+    if action == "shift":
+        try:
+            days = int(form.get("days", ""))
+        except ValueError:
+            days = 0
+        if days == 0 or abs(days) > 370:
+            return render_bulk(request, user, sess,
+                               error="Shift needs a number of days between -370 and 370 (7 = one week later, -7 = one week earlier).")
+    ids = []
+    for raw in form.getlist("ids"):
+        try:
+            ids.append(int(raw))
+        except ValueError:
+            pass
+    if not ids:
+        return render_bulk(request, user, sess, error="No events were ticked — nothing to do.")
+    batch = new_batch_id()
+    done, skipped = 0, 0
+    for eid in ids:
+        ev = db.get_event(eid)
+        if not ev or not can_edit(user, ev):
+            skipped += 1
+            continue
+        if action == "hide" and not ev["hidden"]:
+            db.set_hidden(eid, True, user["username"], batch_id=batch)
+        elif action == "unhide" and ev["hidden"]:
+            db.set_hidden(eid, False, user["username"], batch_id=batch)
+        elif action == "cancel" and ev["status"] == "scheduled":
+            db.set_status(eid, "canceled", user["username"], batch_id=batch)
+        elif action == "reinstate" and ev["status"] in ("canceled", "postponed"):
+            db.set_status(eid, "scheduled", user["username"], batch_id=batch)
+        elif action == "remove" and ev["status"] != "archived":
+            db.set_status(eid, "archived", user["username"], batch_id=batch)
+        elif action == "restore" and ev["status"] == "archived":
+            db.set_status(eid, "scheduled", user["username"], batch_id=batch)
+        elif action == "shift":
+            s = date.fromisoformat(ev["start_date"][:10]) + timedelta(days=days)
+            e = date.fromisoformat(ev["end_date"][:10]) + timedelta(days=days)
+            db.update_event(eid, {"start_date": s.isoformat(), "end_date": e.isoformat()},
+                            user["username"], batch_id=batch, action="shift")
+        else:
+            skipped += 1  # ticked, editable, but the action doesn't apply to its state
+            continue
+        done += 1
+    if not done:
+        return render_bulk(request, user, sess,
+                           error="None of the ticked events could take that action — nothing changed.")
+    label = {"hide": "hidden", "unhide": "unhidden", "cancel": "canceled", "reinstate": "reinstated",
+             "remove": "removed", "restore": "restored",
+             "shift": f"shifted {days:+d} day{'s' if abs(days) != 1 else ''}"}[action]
+    db.create_batch(batch, user["username"], action, f"ticked events {label}", done)
+    msg = f"Done — {done} event{'s' if done != 1 else ''} {label} (batch {batch}). You can undo this below."
+    if skipped:
+        msg += f" {skipped} ticked event{'s were' if skipped != 1 else ' was'} skipped (not applicable or not yours)."
+    return render_bulk(request, user, sess, message=msg)
+
+
+@app.post("/events/{event_id}/copyforward")
+async def copy_forward(request: Request, event_id: int, csrf: str = Form(...)):
+    """One-row 'Copy to next year': same carry/shift rules as the season roll-forward."""
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    ev = db.get_event(event_id)
+    if not ev or not can_edit(user, ev):
+        return PlainTextResponse("Not found or not yours to edit", status_code=404)
+    if csrf != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    s = date.fromisoformat(ev["start_date"][:10])
+    e = date.fromisoformat(ev["end_date"][:10])
+    ty = s.year + 1
+    ns = shift_to_year(s, ty)
+    ne = ns + (e - s)
+    dup = db.find_near_duplicate(ev["club"], ns.isoformat())
+    if dup:
+        return render_bulk(request, user, sess,
+                           error=f"Not copied — {ev['club'] or ev['title']} already has an event near "
+                                 f"{ns.strftime('%b %-d, %Y')} (starting {dup['start_date']}).")
+    data = {f: ev[f] for f in ROLL_CARRY}
+    data["title"] = (ev["title"] or "").replace(str(s.year), str(ty))
+    data["start_date"], data["end_date"] = ns.isoformat(), ne.isoformat()
+    data["status"] = "scheduled"
+    data["source"] = "rollforward"
+    batch = new_batch_id()
+    eid = db.create_event(data, user["username"], batch_id=batch)
+    db.create_batch(batch, user["username"], "copy",
+                    f"copy to {ty}: {data['club'] or data['title']}", 1)
+    return RedirectResponse(f"/events/{eid}/edit", status_code=303)
 
 
 # ---------- roll a season forward (Ted's idea) ----------

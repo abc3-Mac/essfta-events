@@ -239,14 +239,29 @@ def create_event(data, username, batch_id=None):
     return event_id
 
 
-def update_event(event_id, data, username):
+def update_event(event_id, data, username, batch_id=None, action="before-update"):
     con = connect()
-    _snapshot(con, event_id, username, "before-update")
+    _snapshot(con, event_id, username, action, batch_id)
     cols = [f for f in EVENT_FIELDS if f in data]
     sets = ", ".join(f"{c}=?" for c in cols) + ", updated_by=?, updated_at=?"
     con.execute(
         f"UPDATE events SET {sets} WHERE id=?",
         [data[c] for c in cols] + [username, now(), event_id],
+    )
+    con.commit()
+    con.close()
+
+
+def restore_snapshot(event_id, snap, username, batch_id=None):
+    """Put an event back to a prior event_history snapshot — fields, status, and
+    hidden flag alike. The workhorse of batch undo."""
+    con = connect()
+    _snapshot(con, event_id, username, "undo-restore", batch_id)
+    cols = [f for f in EVENT_FIELDS if f in snap]
+    sets = ", ".join(f"{c}=?" for c in cols) + ", hidden=?, updated_by=?, updated_at=?"
+    con.execute(
+        f"UPDATE events SET {sets} WHERE id=?",
+        [snap[c] for c in cols] + [snap.get("hidden", 0), username, now(), event_id],
     )
     con.commit()
     con.close()

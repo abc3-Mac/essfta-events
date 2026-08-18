@@ -115,6 +115,69 @@ curl -s -o /dev/null -X POST "$BASE/bulk/undo" -H "$C" -d "csrf=$CSRF&batch_id=$
 RFA=$(sqlite3 "$DB" "SELECT status FROM events WHERE source='rollforward'")
 ck "$RFA" "archived" "rollforward undo archived the created event"
 
+# 14a. excel export + edit-in-place round trip with undo
+PY="$(dirname "$0")/../.venv/bin/python"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/excel" -H "$C")
+ck "$code" 200 "excel tools page renders"
+curl -s "$BASE/export.xlsx?year=2026" -H "$C" -o /tmp/essfta-export-test.xlsx
+$PY - <<'PYEOF'
+from openpyxl import load_workbook
+wb = load_workbook("/tmp/essfta-export-test.xlsx")
+ws = wb.active
+assert "EVENT ID" in str(ws.cell(row=2, column=10).value), "no id column"
+ws.cell(row=3, column=5, value="SmokeCity")  # first data row, CITY column
+wb.save("/tmp/essfta-export-test.xlsx")
+print(int(ws.cell(row=3, column=10).value))
+PYEOF
+EDIT_ID=$($PY - <<'PYEOF'
+from openpyxl import load_workbook
+ws = load_workbook("/tmp/essfta-export-test.xlsx").active
+print(int(ws.cell(row=3, column=10).value))
+PYEOF
+)
+[ -n "$EDIT_ID" ] && ck ok ok "export has EVENT ID column" || ck no ok "export has EVENT ID column"
+PREVIEW=$(curl -s -X POST "$BASE/import" -H "$C" -F "csrf=$CSRF" -F "file=@/tmp/essfta-export-test.xlsx")
+echo "$PREVIEW" | grep -q "will be updated" && ck ok ok "xlsx edit shows update preview" || ck no ok "xlsx edit shows update preview"
+TOKEN=$(echo "$PREVIEW" | grep -o 'name="pending" value="[^"]*"' | sed 's/.*value="//;s/"//')
+curl -s -o /dev/null -X POST "$BASE/import/apply" -H "$C" -d "csrf=$CSRF&pending=$TOKEN"
+CITY=$(sqlite3 "$DB" "SELECT city FROM events WHERE id=$EDIT_ID")
+ck "$CITY" "SmokeCity" "xlsx edit applied to the event"
+BX=$(sqlite3 "$DB" "SELECT id FROM batches WHERE action='xlsx-import' ORDER BY created_at DESC, rowid DESC LIMIT 1")
+curl -s -o /dev/null -X POST "$BASE/bulk/undo" -H "$C" -d "csrf=$CSRF&batch_id=$BX"
+CITY2=$(sqlite3 "$DB" "SELECT city FROM events WHERE id=$EDIT_ID")
+[ "$CITY2" != "SmokeCity" ] && ck ok ok "xlsx edit undo restored the city" || ck no ok "xlsx edit undo restored the city"
+
+# 14b. ticked-events actions: region isolation, shift + undo
+MW_ID2=$(sqlite3 "$DB" "SELECT id FROM events WHERE region='Mid West' AND status='scheduled' LIMIT 1")
+curl -s -o /dev/null -X POST "$BASE/bulk/selected" -H "$C" -d "csrf=$CSRF&action=hide&ids=$E_ID&ids=$MW_ID2"
+MWH2=$(sqlite3 "$DB" "SELECT hidden FROM events WHERE id=$MW_ID2")
+ck "$MWH2" 0 "ticked action skips another region's event"
+EH3=$(sqlite3 "$DB" "SELECT hidden FROM events WHERE id=$E_ID")
+ck "$EH3" 1 "ticked hide applied to own event"
+BT=$(sqlite3 "$DB" "SELECT id FROM batches ORDER BY created_at DESC, rowid DESC LIMIT 1")
+curl -s -o /dev/null -X POST "$BASE/bulk/undo" -H "$C" -d "csrf=$CSRF&batch_id=$BT"
+EH4=$(sqlite3 "$DB" "SELECT hidden FROM events WHERE id=$E_ID")
+ck "$EH4" 0 "ticked hide undone"
+OLDSTART=$(sqlite3 "$DB" "SELECT start_date FROM events WHERE id=$E_ID")
+curl -s -o /dev/null -X POST "$BASE/bulk/selected" -H "$C" -d "csrf=$CSRF&action=shift&days=7&ids=$E_ID"
+NEWSTART=$(sqlite3 "$DB" "SELECT start_date FROM events WHERE id=$E_ID")
+WANT=$(sqlite3 "$DB" "SELECT date('$OLDSTART', '+7 days')")
+ck "$NEWSTART" "$WANT" "shift moved the start date +7"
+BS=$(sqlite3 "$DB" "SELECT id FROM batches ORDER BY created_at DESC, rowid DESC LIMIT 1")
+curl -s -o /dev/null -X POST "$BASE/bulk/undo" -H "$C" -d "csrf=$CSRF&batch_id=$BS"
+BACKSTART=$(sqlite3 "$DB" "SELECT start_date FROM events WHERE id=$E_ID")
+ck "$BACKSTART" "$OLDSTART" "shift undo restored the date"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/bulk/selected" -H "$C" -d "csrf=$CSRF&action=remove&ids=$E_ID")
+ck "$code" 403 "governor blocked from ticked remove"
+
+# 14c. single copy-to-next-year
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/events/$E_ID/copyforward" -H "$C" -d "csrf=$CSRF")
+ck "$code" 303 "copyforward creates and redirects to edit"
+CFN=$(sqlite3 "$DB" "SELECT COUNT(*) FROM events WHERE source='rollforward' AND created_by='east'")
+[ "$CFN" -ge 1 ] && ck ok ok "copyforward event created" || ck no ok "copyforward event created"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/events/$MW_ID2/copyforward" -H "$C" -d "csrf=$CSRF")
+ck "$code" 404 "copyforward blocked on another region's event"
+
 # 14. help page: signed-in only, role-aware
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/help")
 ck "$code" 303 "help redirects anonymous to login"

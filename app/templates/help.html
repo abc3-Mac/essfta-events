@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Help — ESSFTA Field Events{% endblock %}
+{% block bodyclass %} tools{% endblock %}
 {% block content %}
 <div class="dash-head">
   <h2>Help</h2>
@@ -15,7 +16,8 @@ can be undone, and every change is recorded with your name on it.</p>
   <li><a href="#add">Adding a single event</a></li>
   <li><a href="#edit">Editing an event</a></li>
   <li><a href="#cancel">Cancel vs Hide{% if user.role == 'admin' %} vs Remove{% endif %} — which one do I want?</a></li>
-  <li><a href="#excel">Adding a whole schedule from Excel</a></li>
+  <li><a href="#excel">Excel: add a schedule, edit events, or draft next year</a></li>
+  <li><a href="#ticked">Ticking several events at once (and shifting dates)</a></li>
   <li><a href="#bulk">Bulk hide / unhide (e.g. "hide everything before today")</a></li>
   <li><a href="#roll">Roll a season forward (copy last year's trials into next year)</a></li>
   <li><a href="#undo">Undoing a bulk mistake</a></li>
@@ -52,12 +54,31 @@ Change the dates and the calendar, grid, and printable page all update themselve
   {% endif %}
 </ul>
 
-<h3 id="excel">Adding a whole schedule from Excel</h3>
-<p>Open <strong>Bulk add from a spreadsheet</strong> on the dashboard. Download the template
-(it's the familiar interclub schedule format), fill one row per trial, and upload it.
-Rows whose club and first day are already on the calendar are skipped, so uploading the
-same file twice is harmless. The upload <em>creates</em> events only — it never changes
-existing ones. After the upload, open each new event to add judges, fees, and links.</p>
+<h3 id="excel">Excel: add a schedule, edit events, or draft next year</h3>
+<p>The <strong>Spreadsheet (Excel)</strong> card on the dashboard covers three jobs:</p>
+<ul>
+  <li><strong>Add new trials</strong> — download the blank template (the familiar interclub
+  schedule format), fill one row per trial, upload. Rows already on the calendar are skipped,
+  so uploading twice is harmless.</li>
+  <li><strong>Edit existing trials</strong> — download the calendar's current events
+  for a year. That file carries an <em>EVENT ID</em> column; change dates, clubs, cities, or
+  stakes in Excel, re-upload, and those same events are updated. You're shown every change
+  for confirmation before anything is saved, and the whole upload has an Undo afterward.</li>
+  <li><strong>Draft next year from this year</strong> — download this year, change the dates
+  to next year, tick "treat every row as new" when uploading. (Or skip Excel entirely and use
+  <a href="/rollforward">Roll a season forward</a>.)</li>
+</ul>
+<p>Judges, fees, and links aren't in the spreadsheet — edit those on the event page.</p>
+
+<h3 id="ticked">Ticking several events at once</h3>
+<p>Every table on the dashboard has checkboxes (the box in the header row ticks a whole
+section). Tick some events, pick an action in the bar above the tables — Hide, Unhide,
+Cancel, Reinstate{% if user.role == 'admin' %}, Remove, Restore{% endif %}, or
+<strong>Shift dates by N days</strong> — and click Apply. Shifting by 7 moves everything one
+week later and keeps the days of the week; −7 moves a week earlier. Useful when a whole
+circuit moves a weekend. Ticked-event runs are batches too, so they can be undone.</p>
+<p>Each row also has a <strong>Copy → next year</strong> button: one click copies that trial
+to the same weekend next year (same rules as the roll-forward) and opens it for adjusting.</p>
 
 <h3 id="bulk">Bulk hide / unhide</h3>
 <p><strong>Bulk hide / unhide</strong> on the dashboard changes many events in one step —
@@ -80,7 +101,8 @@ are not copied. After creating, open each event to adjust its exact date or add 
 as they're confirmed.</p>
 
 <h3 id="undo">Undoing a bulk mistake</h3>
-<p>Every bulk run — a bulk hide, a bulk unhide, a roll-forward — is saved as a
+<p>Every bulk run — a bulk hide or unhide, a ticked-events action, a date shift, a
+spreadsheet edit upload, a roll-forward, a copy-to-next-year — is saved as a
 <em>batch</em>. The page that ran it shows an <strong>Undo</strong> button immediately
 afterward, and the Bulk hide / unhide page lists recent batches with their Undo buttons,
 so you can also undo later. Undo puts every event the batch touched back exactly as it was.</p>

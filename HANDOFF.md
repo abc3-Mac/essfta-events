@@ -9,7 +9,13 @@ embed into englishspringerspaniels.org; authenticated dashboard for the five Fie
 Governors + two admins (Albert, Patty). See README.md for routes and the embed snippet.
 
 ## State at handoff
-- **Local:** fully working, 33/33 smoke tests pass (`seed/smoke_test.sh`).
+- **Local:** fully working, 50/50 smoke tests pass (`seed/smoke_test.sh`).
+- **18 Aug 2026 round 2:** `/excel` export + edit-in-place upload (EVENT ID column,
+  preview-confirm, undoable; `as_new` mode = draft next year from this year's file),
+  dashboard multi-select + action bar (incl. shift-by-N-days), per-row Copy → next
+  year, `/help` page, lectionary-style tool-card UI on signed-in pages (public
+  embed views untouched). Stylesheet link carries `?v=` — bump it when editing CSS
+  or clients keep the cached old one.
 - **18 Aug 2026 round:** login audit log (`login_events`, `/audit`, last-seen on
   `/users`), Hide-vs-Remove split (`events.hidden` flag), `/bulk` date-range
   hide/unhide (+ admin remove/restore) with preview + batch undo, `/rollforward`
