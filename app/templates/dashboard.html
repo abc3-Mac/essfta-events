@@ -6,7 +6,10 @@
   <span class="who">signed in as {{ user.display_name }}
     ({% if user.role == 'admin' %}admin{% else %}{{ user.region }} governor{% endif %})</span>
   <a class="btn small" href="/events/new">+ Add event</a>
-  {% if user.role == 'admin' %}<a class="btn small ghost" href="/users">Manage governors</a>{% endif %}
+  <a class="btn small ghost" href="/bulk">Bulk hide / unhide</a>
+  <a class="btn small ghost" href="/rollforward">Roll a season forward</a>
+  {% if user.role == 'admin' %}<a class="btn small ghost" href="/users">Manage governors</a>
+  <a class="btn small ghost" href="/audit">Audit log</a>{% endif %}
   <form method="post" action="/logout"><button class="btn small ghost">Sign out</button></form>
 </div>
 
@@ -62,7 +65,8 @@
         <div class="meta">{{ ev.event_type }}{% if ev.region %} · {{ ev.region }}{% endif %}</div></td>
     <td>{{ ev.city }}</td>
     <td>{{ ev.state }}</td>
-    <td>{{ ev.status }}</td>
+    <td>{{ ev.status }}{% if ev.hidden %}
+        <span style="background:#555;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;white-space:nowrap">hidden</span>{% endif %}</td>
     <td class="actions">
       <a class="btn small ghost" href="/events/{{ ev.id }}/edit">Edit</a>
       {% if ev.status == 'scheduled' %}
@@ -80,12 +84,28 @@
       </form>
       {% endif %}
       {% if ev.status != 'archived' %}
+      {% if ev.hidden %}
+      <form method="post" action="/events/{{ ev.id }}/hidden">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="hidden" value="0">
+        <button class="btn small ghost">Unhide</button>
+      </form>
+      {% else %}
+      <form method="post" action="/events/{{ ev.id }}/hidden"
+            onsubmit="return confirm('Hide this event from the public views? It stays right here on your dashboard, marked hidden, and one click unhides it.');">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="hidden" value="1">
+        <button class="btn small ghost">Hide</button>
+      </form>
+      {% endif %}
+      {% if user.role == 'admin' %}
       <form method="post" action="/events/{{ ev.id }}/status"
-            onsubmit="return confirm('{% if user.role == 'admin' %}Remove{% else %}Hide{% endif %} this event from ALL public views? It moves to the hidden list below, where it can be restored.');">
+            onsubmit="return confirm('Remove this event? It moves to the removed list below, where it can be restored.');">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="status" value="archived">
-        <button class="btn small warn">{% if user.role == 'admin' %}Remove{% else %}Hide{% endif %}</button>
+        <button class="btn small warn">Remove</button>
       </form>
+      {% endif %}
       {% endif %}
     </td>
   </tr>
@@ -102,8 +122,15 @@
 </details>
 
 {% if archived %}
+{% if hidden %}
 <details class="past-block">
-  <summary>Hidden / removed events ({{ archived | length }}) — not shown to the public</summary>
+  <summary>Hidden from the public views ({{ hidden | length }}) — also listed in place above, marked <em>hidden</em></summary>
+  {{ event_table(hidden) }}
+</details>
+{% endif %}
+
+<details class="past-block">
+  <summary>Removed events ({{ archived | length }}) — not shown to the public</summary>
   {{ event_table(archived) }}
 </details>
 {% endif %}

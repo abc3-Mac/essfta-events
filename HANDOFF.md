@@ -9,7 +9,12 @@ embed into englishspringerspaniels.org; authenticated dashboard for the five Fie
 Governors + two admins (Albert, Patty). See README.md for routes and the embed snippet.
 
 ## State at handoff
-- **Local:** fully working, 17/17 smoke tests pass (`seed/smoke_test.sh`).
+- **Local:** fully working, 33/33 smoke tests pass (`seed/smoke_test.sh`).
+- **18 Aug 2026 round:** login audit log (`login_events`, `/audit`, last-seen on
+  `/users`), Hide-vs-Remove split (`events.hidden` flag), `/bulk` date-range
+  hide/unhide (+ admin remove/restore) with preview + batch undo, `/rollforward`
+  season cloning. Bulk ops share `batches` + `event_history.batch_id`. Pre-deploy
+  live-DB backups in `backups/` (gitignored) via the Portainer archive API.
 - **Data:** 186 events seeded from `archive/` (the 13 Aug 2026 essft.com API capture;
   34 "Holidays" filler excluded). Non-region events (Hunt Tests, Cockers, Nationals,
   seminars) have region=NULL → gray, admin-managed.

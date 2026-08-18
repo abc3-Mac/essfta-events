@@ -23,8 +23,25 @@ the whole thing embeds by iframe into the ESSFTA main WordPress site.
 - Five **governor** accounts (east, mideast, midwest, rockymountain, west) —
   each can add/edit/cancel events only in their own region.
 - Two **admin** accounts (albert, patty) — edit anything, and manage governor
-  accounts at `/users` (add a governor, reset a password, deactivate/reactivate).
-  Passwords are generated server-side and shown exactly once.
+  accounts at `/users` (add a governor, reset a password, deactivate/reactivate;
+  shows each account's last sign-in). Passwords are generated server-side and
+  shown exactly once.
+
+## Editing tools (signed-in)
+
+- **Hide vs Remove** — *Hide* (governors + admins) keeps an event in place on the
+  dashboard, marked hidden, but off every public view; one click unhides.
+  *Remove* (admins) moves it to the removed list, restorable. Nothing is ever
+  hard-deleted.
+- `/bulk` — hide/unhide events by date range (admins: also remove/restore, any
+  region). Preview first, then confirm; every run is a batch with one-click Undo.
+- `/rollforward` — copy a region's season into the next year: dates shift to the
+  same weekend + day of week, club/location/stakes carry over, judges/fees/links
+  start blank. Duplicate-aware (skips clubs already on the target-year calendar
+  within ±30 days), previewed before creation, undoable as a batch.
+- `/template.xlsx` + `/import` — region-stamped Excel template and bulk upload
+  (create-only; existing club+date rows are skipped).
+- `/audit` (admins) — sign-in log (failures highlighted) + recent event changes.
 
 ## Region colors (canonical ESSFTA legend)
 

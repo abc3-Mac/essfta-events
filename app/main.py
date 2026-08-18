@@ -209,6 +209,10 @@ def event_detail(request: Request, event_id: int):
     ev = db.get_event(event_id)
     if not ev or ev["status"] == "archived":
         return PlainTextResponse("Event not found", status_code=404)
+    if ev.get("hidden"):
+        viewer, _ = current_user(request)
+        if not viewer:  # hidden events stay reachable for signed-in governors/admins
+            return PlainTextResponse("Event not found", status_code=404)
     resp = templates.TemplateResponse(request, "event_detail.html", {
         "ev": ev, "embed": request.query_params.get("embed") == "1", "view": None,
     })
@@ -254,14 +258,19 @@ def login_form(request: Request):
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
     ip = request.client.host if request.client else "?"
+    ua = request.headers.get("user-agent", "")
+    attempted = username.strip().lower()
     if auth.rate_limited(ip):
+        db.log_login(attempted, "rate_limited", ip, ua)
         return templates.TemplateResponse(
             request, "login.html", {"error": "Too many attempts — wait ten minutes."}, status_code=429)
     auth.record_attempt(ip)
-    user = db.get_user(username.strip().lower())
+    user = db.get_user(attempted)
     if not user or not auth.check_password(password, user["pw_hash"]):
+        db.log_login(attempted, "login_failed", ip, ua)
         return templates.TemplateResponse(
             request, "login.html", {"error": "Wrong username or password."}, status_code=401)
+    db.log_login(user["username"], "login_ok", ip, ua)
     resp = RedirectResponse("/dashboard", status_code=303)
     resp.set_cookie(auth.COOKIE, auth.make_session(user["username"]),
                     httponly=True, samesite="lax", secure=True, max_age=auth.SESSION_TTL)
@@ -269,7 +278,11 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 
 
 @app.post("/logout")
-def logout():
+def logout(request: Request):
+    user, _ = current_user(request)
+    if user:
+        ip = request.client.host if request.client else "?"
+        db.log_login(user["username"], "logout", ip, request.headers.get("user-agent", ""))
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(auth.COOKIE)
     return resp
@@ -296,14 +309,15 @@ def dashboard(request: Request):
     if redir:
         return redir
     region = user["region"] if user["role"] == "governor" else (request.query_params.get("region") or None)
-    events = db.list_events(region=region)
+    events = db.list_events(region=region, include_hidden=True)
     today = date.today().isoformat()
     upcoming = [e for e in events if e["end_date"][:10] >= today]
     past = [e for e in events if e["end_date"][:10] < today][::-1]
-    archived = db.list_events(region=region, status="archived")  # governors: own region; admins: filterable
+    hidden = [e for e in events if e["hidden"]]
+    archived = db.list_events(region=region, status="archived", include_hidden=True)  # governors: own region; admins: filterable
     return templates.TemplateResponse(request, "dashboard.html", {
         "user": user, "csrf": sess["csrf"], "upcoming": upcoming, "past": past,
-        "archived": archived[::-1], "region_filter": region,
+        "hidden": hidden, "archived": archived[::-1], "region_filter": region,
     })
 
 
@@ -478,14 +492,39 @@ def generate_password():
     return "-".join(secrets.token_hex(2) for _ in range(3))
 
 
+def render_users(request, user, sess, new_password=None, pw_for=None):
+    return templates.TemplateResponse(request, "users.html", {
+        "user": user, "csrf": sess["csrf"], "users": db.list_users(),
+        "last_seen": db.last_seen_map(),
+        "new_password": new_password, "pw_for": pw_for,
+    })
+
+
 @app.get("/users", response_class=HTMLResponse)
 def users_page(request: Request):
     user, sess, redir = require_admin(request)
     if redir:
         return redir
-    return templates.TemplateResponse(request, "users.html", {
-        "user": user, "csrf": sess["csrf"], "users": db.list_users(),
-        "new_password": None, "pw_for": None,
+    return render_users(request, user, sess)
+
+
+@app.get("/audit", response_class=HTMLResponse)
+def audit_page(request: Request):
+    """Admin-only: who signed in (or tried to), and who changed what. IPs are personal
+    data — this page must never be linked from a public view or embedded."""
+    user, sess, redir = require_admin(request)
+    if redir:
+        return redir
+    qp = request.query_params
+    f_user = qp.get("user") or None
+    f_from = qp.get("from") or None
+    f_to = qp.get("to") or None
+    return templates.TemplateResponse(request, "audit.html", {
+        "user": user, "csrf": sess["csrf"],
+        "logins": db.list_login_events(username=f_user, date_from=f_from, date_to=f_to),
+        "changes": db.recent_event_changes(150),
+        "usernames": [u["username"] for u in db.list_users()],
+        "f_user": f_user, "f_from": f_from, "f_to": f_to,
     })
 
 
@@ -502,10 +541,7 @@ def add_governor(request: Request, username: str = Form(...), display_name: str 
         return PlainTextResponse("Username taken or invalid (letters/numbers only)", status_code=400)
     pw = generate_password()
     db.create_user(username, display_name.strip(), "governor", region, auth.hash_password(pw))
-    return templates.TemplateResponse(request, "users.html", {
-        "user": user, "csrf": sess["csrf"], "users": db.list_users(),
-        "new_password": pw, "pw_for": username,
-    })
+    return render_users(request, user, sess, new_password=pw, pw_for=username)
 
 
 @app.post("/users/{username}/resetpw")
@@ -518,10 +554,7 @@ def reset_password(request: Request, username: str, csrf: str = Form(...)):
         return PlainTextResponse("Bad request", status_code=403)
     pw = generate_password()
     db.set_password(username, auth.hash_password(pw))
-    return templates.TemplateResponse(request, "users.html", {
-        "user": user, "csrf": sess["csrf"], "users": db.list_users(),
-        "new_password": pw, "pw_for": username,
-    })
+    return render_users(request, user, sess, new_password=pw, pw_for=username)
 
 
 @app.post("/users/{username}/active")
@@ -550,3 +583,292 @@ async def change_status(request: Request, event_id: int, status: str = Form(...)
         return PlainTextResponse("Bad request", status_code=403)
     db.set_status(event_id, status, user["username"])
     return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.post("/events/{event_id}/hidden")
+async def change_hidden(request: Request, event_id: int, hidden: str = Form(...), csrf: str = Form(...)):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    ev = db.get_event(event_id)
+    if not ev or not can_edit(user, ev):
+        return PlainTextResponse("Not found or not yours to edit", status_code=404)
+    if csrf != sess["csrf"] or hidden not in ("0", "1"):
+        return PlainTextResponse("Bad request", status_code=403)
+    db.set_hidden(event_id, hidden == "1", user["username"])
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+# ---------- bulk operations (hide / unhide by date range, batch undo) ----------
+
+BULK_ACTIONS = {
+    # action -> (label, select kwargs for bulk_select, apply function, admin_only)
+    "hide": ("Hide from all public views",
+             {"statuses": ("scheduled", "canceled", "postponed"), "hidden": 0},
+             lambda eid, u, b: db.set_hidden(eid, True, u, batch_id=b), False),
+    "unhide": ("Put back on the public views",
+               {"statuses": ("scheduled", "canceled", "postponed"), "hidden": 1},
+               lambda eid, u, b: db.set_hidden(eid, False, u, batch_id=b), False),
+    "remove": ("Remove (move to the removed list)",
+               {"statuses": ("scheduled", "canceled", "postponed")},
+               lambda eid, u, b: db.set_status(eid, "archived", u, batch_id=b), True),
+    "restore": ("Restore removed events to the calendar",
+                {"statuses": ("archived",)},
+                lambda eid, u, b: db.set_status(eid, "scheduled", u, batch_id=b), True),
+}
+
+
+def bulk_region_scope(user, submitted):
+    """Governors act on their own region only, whatever the form claims — security boundary."""
+    if user["role"] == "governor":
+        return user["region"]
+    r = submitted or "ALL"
+    return r if (r in db.REGIONS or r in ("ALL", "NONE")) else "ALL"
+
+
+def region_label(scope):
+    return {"ALL": "all regions", "NONE": "no-region (National / other)"}.get(scope, scope + " region")
+
+
+def _iso(s):
+    try:
+        return date.fromisoformat((s or "").strip()).isoformat()
+    except ValueError:
+        return None
+
+
+def new_batch_id():
+    import secrets
+    return date.today().strftime("%y%m%d") + "-" + secrets.token_hex(3)
+
+
+def render_bulk(request, user, sess, **extra):
+    batches = db.list_batches(created_by=None if user["role"] == "admin" else user["username"])
+    ctx = {"user": user, "csrf": sess["csrf"], "stage": "form",
+           "today": date.today().isoformat(), "batches": batches,
+           "message": None, "error": None}
+    ctx.update(extra)
+    return templates.TemplateResponse(request, "bulk.html", ctx)
+
+
+@app.get("/bulk", response_class=HTMLResponse)
+def bulk_form(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    return render_bulk(request, user, sess)
+
+
+async def bulk_params(request, user, sess):
+    """Shared validation for preview and apply. Returns (params, error_response)."""
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return None, PlainTextResponse("Bad CSRF token", status_code=403)
+    action = form.get("action", "")
+    if action not in BULK_ACTIONS:
+        return None, PlainTextResponse("Bad request", status_code=400)
+    if BULK_ACTIONS[action][3] and user["role"] != "admin":
+        return None, PlainTextResponse("Admins only", status_code=403)
+    date_from, date_to = _iso(form.get("date_from")), _iso(form.get("date_to"))
+    if not date_from or not date_to or date_to < date_from:
+        return None, render_bulk(request, user, sess, error="Please give a valid date range (from ≤ to).")
+    scope = bulk_region_scope(user, form.get("region"))
+    return {"action": action, "date_from": date_from, "date_to": date_to, "scope": scope}, None
+
+
+@app.post("/bulk/preview")
+async def bulk_preview(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    p, err = await bulk_params(request, user, sess)
+    if err:
+        return err
+    label, sel, _, _ = BULK_ACTIONS[p["action"]]
+    events = db.bulk_select(p["date_from"], p["date_to"], p["scope"], **sel)
+    return render_bulk(request, user, sess, stage="preview", events=events,
+                       action=p["action"], action_label=label,
+                       date_from=p["date_from"], date_to=p["date_to"],
+                       scope=p["scope"], scope_label=region_label(p["scope"]))
+
+
+@app.post("/bulk/apply")
+async def bulk_apply(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    p, err = await bulk_params(request, user, sess)
+    if err:
+        return err
+    label, sel, apply_fn, _ = BULK_ACTIONS[p["action"]]
+    # re-select server-side: what gets changed is exactly what the preview showed,
+    # never a list of ids the browser could have tampered with
+    events = db.bulk_select(p["date_from"], p["date_to"], p["scope"], **sel)
+    if not events:
+        return render_bulk(request, user, sess, error="Nothing matched — no events were changed.")
+    batch = new_batch_id()
+    for ev in events:
+        apply_fn(ev["id"], user["username"], batch)
+    desc = f"{p['action']}: {region_label(p['scope'])}, {p['date_from']} → {p['date_to']}"
+    db.create_batch(batch, user["username"], p["action"], desc, len(events))
+    return render_bulk(request, user, sess, stage="result", events=events,
+                       action_label=label, batch_id=batch,
+                       message=f"Done — {len(events)} event{'s' if len(events) != 1 else ''} changed "
+                               f"(batch {batch}). You can undo this below.")
+
+
+@app.post("/bulk/undo")
+async def bulk_undo(request: Request, batch_id: str = Form(...), csrf: str = Form(...)):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    if csrf != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    batch = db.get_batch(batch_id)
+    if not batch:
+        return PlainTextResponse("No such batch", status_code=404)
+    if user["role"] != "admin" and batch["created_by"] != user["username"]:
+        return PlainTextResponse("Not your batch to undo", status_code=403)
+    if batch["undone_at"]:
+        return render_bulk(request, user, sess, error=f"Batch {batch_id} was already undone.")
+    import json as _json
+    count = 0
+    for h in db.batch_history(batch_id):
+        snap = _json.loads(h["snapshot_json"]) or {}
+        if h["action"] == "create":
+            # a roll-forward created this event: archive it (nothing is ever hard-deleted)
+            db.set_status(h["event_id"], "archived", user["username"], batch_id=batch_id + "-undo")
+        elif h["action"].startswith("hidden:"):
+            db.set_hidden(h["event_id"], snap.get("hidden", 0), user["username"], batch_id=batch_id + "-undo")
+        else:
+            db.set_status(h["event_id"], snap.get("status", "scheduled"), user["username"],
+                          batch_id=batch_id + "-undo")
+        count += 1
+    db.mark_batch_undone(batch_id)
+    return render_bulk(request, user, sess,
+                       message=f"Batch {batch_id} undone — {count} event{'s' if count != 1 else ''} put back.")
+
+
+# ---------- roll a season forward (Ted's idea) ----------
+
+ROLL_CARRY = ["club", "region", "event_type", "city", "state", "venue",
+              "stakes_open", "stakes_amateur", "stakes_puppy", "stakes_cocker", "water_test"]
+# judges, fees, closing dates, links and notes change every year — deliberately NOT carried
+
+
+def shift_to_year(d: date, target_year: int) -> date:
+    """Same time of year, same day of the week: nearest matching weekday to the
+    anniversary date. For a one-year roll this is the familiar 52/53-week shift."""
+    try:
+        anchor = d.replace(year=target_year)
+    except ValueError:  # Feb 29
+        anchor = d.replace(year=target_year, day=28)
+    delta = (d.weekday() - anchor.weekday()) % 7
+    cand = anchor + timedelta(days=delta)
+    return cand - timedelta(days=7) if delta > 3 else cand
+
+
+def build_roll_plan(scope, source_year: int, target_year: int):
+    """Plan rows: (source event, new_start, new_end, disposition, dup_of)."""
+    events = db.bulk_select(f"{source_year}-01-01", f"{source_year}-12-31", scope,
+                            ("scheduled", "canceled", "postponed"))
+    plan = []
+    for ev in events:
+        s = date.fromisoformat(ev["start_date"][:10])
+        e = date.fromisoformat(ev["end_date"][:10])
+        ns = shift_to_year(s, target_year)
+        ne = ns + (e - s)
+        if ev["status"] == "canceled":
+            plan.append({"ev": ev, "new_start": ns.isoformat(), "new_end": ne.isoformat(),
+                         "disposition": "canceled", "dup_of": None})
+            continue
+        dup = db.find_near_duplicate(ev["club"], ns.isoformat())
+        plan.append({"ev": ev, "new_start": ns.isoformat(), "new_end": ne.isoformat(),
+                     "disposition": "dup" if dup else "create", "dup_of": dup})
+    return plan
+
+
+def render_roll(request, user, sess, **extra):
+    years = db.distinct_event_years()
+    this_year = date.today().year
+    ctx = {"user": user, "csrf": sess["csrf"], "stage": "form", "years": years,
+           "source_year": this_year, "target_year": this_year + 1,
+           "message": None, "error": None}
+    ctx.update(extra)
+    return templates.TemplateResponse(request, "rollforward.html", ctx)
+
+
+@app.get("/rollforward", response_class=HTMLResponse)
+def rollforward_form(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    return render_roll(request, user, sess)
+
+
+async def roll_params(request, user, sess):
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return None, None, PlainTextResponse("Bad CSRF token", status_code=403)
+    try:
+        sy, ty = int(form.get("source_year", "")), int(form.get("target_year", ""))
+    except ValueError:
+        return None, None, PlainTextResponse("Bad year", status_code=400)
+    if not (2000 <= sy <= 2100 and 2000 <= ty <= 2100) or sy == ty:
+        return None, None, render_roll(request, user, sess,
+                                       error="Pick a source year and a different target year.")
+    scope = bulk_region_scope(user, form.get("region"))
+    if scope == "ALL":  # one region at a time keeps a mistake one region wide
+        scope = "NONE" if user["role"] == "admin" and form.get("region") == "NONE" else None
+    if scope is None:
+        return None, None, render_roll(request, user, sess, error="Pick a region to roll forward.")
+    return form, {"sy": sy, "ty": ty, "scope": scope}, None
+
+
+@app.post("/rollforward/preview")
+async def rollforward_preview(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    form, p, err = await roll_params(request, user, sess)
+    if err:
+        return err
+    plan = build_roll_plan(p["scope"], p["sy"], p["ty"])
+    return render_roll(request, user, sess, stage="preview", plan=plan,
+                       source_year=p["sy"], target_year=p["ty"],
+                       scope=p["scope"], scope_label=region_label(p["scope"]),
+                       creatable=sum(1 for r in plan if r["disposition"] == "create"))
+
+
+@app.post("/rollforward/apply")
+async def rollforward_apply(request: Request):
+    user, sess, redir = require_user(request)
+    if redir:
+        return redir
+    form, p, err = await roll_params(request, user, sess)
+    if err:
+        return err
+    include = set(form.getlist("include"))
+    # the plan is recomputed server-side; the checkboxes can only NARROW it,
+    # never reach events outside the caller's region scope
+    plan = [r for r in build_roll_plan(p["scope"], p["sy"], p["ty"])
+            if r["disposition"] == "create" and str(r["ev"]["id"]) in include]
+    if not plan:
+        return render_roll(request, user, sess, error="Nothing selected — no events were created.")
+    batch = new_batch_id()
+    created = []
+    for r in plan:
+        ev = r["ev"]
+        data = {f: ev[f] for f in ROLL_CARRY}
+        data["title"] = (ev["title"] or "").replace(str(p["sy"]), str(p["ty"]))
+        data["start_date"], data["end_date"] = r["new_start"], r["new_end"]
+        data["status"] = "scheduled"
+        data["source"] = "rollforward"
+        eid = db.create_event(data, user["username"], batch_id=batch)
+        created.append({**data, "id": eid})
+    db.create_batch(batch, user["username"], "rollforward",
+                    f"rollforward: {region_label(p['scope'])}, {p['sy']} → {p['ty']}", len(created))
+    return render_roll(request, user, sess, stage="result", created=created,
+                       source_year=p["sy"], target_year=p["ty"], batch_id=batch,
+                       message=f"Created {len(created)} event{'s' if len(created) != 1 else ''} "
+                               f"for {p['ty']} (batch {batch}).")

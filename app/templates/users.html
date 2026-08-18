@@ -4,6 +4,7 @@
 <div class="dash-head">
   <h2>Governor accounts</h2>
   <a class="btn small ghost" href="/dashboard">&larr; dashboard</a>
+  <a class="btn small ghost" href="/audit">Audit log</a>
 </div>
 
 {% if new_password %}
@@ -14,7 +15,7 @@
 {% endif %}
 
 <table class="events">
-  <tr><th>Username</th><th>Name</th><th>Role</th><th>Region</th><th>Status</th><th></th></tr>
+  <tr><th>Username</th><th>Name</th><th>Role</th><th>Region</th><th>Status</th><th>Last signed in (UTC)</th><th></th></tr>
   {% for u in users %}
   <tr>
     <td><code>{{ u.username }}</code></td>
@@ -22,6 +23,7 @@
     <td>{{ u.role }}</td>
     <td>{{ u.region or "—" }}</td>
     <td>{% if u.active %}active{% else %}<strong style="color:#a02020">deactivated</strong>{% endif %}</td>
+    <td>{% if last_seen.get(u.username) %}{{ last_seen[u.username] }}{% else %}<span style="color:#a06020">never</span>{% endif %}</td>
     <td class="actions">
       <form method="post" action="/users/{{ u.username }}/resetpw">
         <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -47,6 +49,8 @@
   </tr>
   {% endfor %}
 </table>
+<p><small>"Last signed in" is recorded from 18 Aug 2026 onward — "never" means no sign-in
+since then. The full sign-in history is on the <a href="/audit">audit log</a>.</small></p>
 
 <h3>Add a new field governor</h3>
 <form class="event-form" method="post" action="/users/new">
