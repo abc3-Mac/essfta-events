@@ -211,6 +211,20 @@ curl -s -o /dev/null -X POST "$BASE/settings" -H "$CA" -d "csrf=$CSRFA&public_pa
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/event/$P_ID")
 ck "$code" 200 "toggled back on: past detail public again"
 
+# 14e. region color settings: admin-only, applied site-wide, Default restores
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings/colors" -H "$C" -d "csrf=$CSRF&color_0=%23112233&color_1=%23112233&color_2=%23112233&color_3=%23112233&color_4=%23112233")
+ck "$code" 403 "governor blocked from color settings"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings/colors" -H "$CA" \
+  -d "csrf=$CSRFA&do=save&color_0=%23112233&color_1=%23223344&color_2=%23334455&color_3=%23445566&color_4=%23556677")
+ck "$code" 303 "admin saves custom region colors"
+curl -s "$BASE/" | grep -q "#112233" && ck ok ok "custom color live on the public page" || ck no ok "custom color live on the public page"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings/colors" -H "$CA" -d "csrf=$CSRFA&do=default")
+ck "$code" 303 "Default colors button restores"
+curl -s "$BASE/" | grep -q "#c62828" && ck ok ok "default East red back on the public page" || ck no ok "default East red back on the public page"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/settings/colors" -H "$CA" \
+  -d "csrf=$CSRFA&do=save&color_0=red&color_1=%23223344&color_2=%23334455&color_3=%23445566&color_4=%23556677")
+ck "$code" 400 "bad color value rejected"
+
 # 15. public pages + headers
 curl -s -D - -o /dev/null "$BASE/" | grep -qi "frame-ancestors" && ck ok ok "CSP frame-ancestors on public page" || ck no ok "CSP frame-ancestors"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/events.ics"); ck "$code" 200 "iCal feed"

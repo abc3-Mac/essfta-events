@@ -13,13 +13,50 @@ EVENT_TYPES = [
     "National", "Canadian Trial", "Gunning Seminar", "Judging Seminar", "Training Seminar",
 ]
 
-REGION_COLORS = {  # legend colors per Patty Mortara, 18 Aug 2026
+DEFAULT_REGION_COLORS = {  # "Default colors" = Patty Mortara's scheme, 18 Aug 2026
     "East": "#c62828",           # red
     "Mid East": "#cc6600",       # orange
     "Mid West": "#1f9d5b",       # green
     "Rocky Mountain": "#7030a0", # purple
     "West": "#2f5fa5",           # blue
 }
+
+_region_colors_cache = {"v": None}  # single-process app; invalidated by set_region_colors
+
+
+def region_colors():
+    """The active palette: admin-set colors from settings, defaults otherwise."""
+    if _region_colors_cache["v"] is None:
+        try:
+            custom = json.loads(get_setting("region_colors", "") or "{}")
+        except ValueError:
+            custom = {}
+        merged = dict(DEFAULT_REGION_COLORS)
+        merged.update({k: v for k, v in custom.items() if k in merged})
+        _region_colors_cache["v"] = merged
+    return _region_colors_cache["v"]
+
+
+def set_region_colors(colors, username):
+    """colors: {region: '#rrggbb'} to store, or None to return to the defaults."""
+    set_setting("region_colors", json.dumps(colors) if colors else "", username)
+    _region_colors_cache["v"] = None
+
+
+class _RegionColorMap:
+    """Dict-like view over the active palette, so templates can keep using
+    REGION_COLORS[...] / .get() while admins change colors at runtime."""
+    def __getitem__(self, key):
+        return region_colors()[key]
+
+    def get(self, key, default=None):
+        return region_colors().get(key, default)
+
+    def items(self):
+        return region_colors().items()
+
+
+REGION_COLORS = _RegionColorMap()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (

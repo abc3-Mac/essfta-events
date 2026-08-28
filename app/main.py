@@ -705,6 +705,27 @@ def save_settings(request: Request, public_past: str = Form("0"), csrf: str = Fo
     return RedirectResponse("/dashboard", status_code=303)
 
 
+@app.post("/settings/colors")
+async def save_region_colors(request: Request):
+    user, sess, redir = require_admin(request)
+    if redir:
+        return redir
+    form = await request.form()
+    if form.get("csrf") != sess["csrf"]:
+        return PlainTextResponse("Bad CSRF token", status_code=403)
+    if form.get("do") == "default":
+        db.set_region_colors(None, user["username"])
+        return RedirectResponse("/dashboard", status_code=303)
+    colors = {}
+    for i, r in enumerate(db.REGIONS):
+        v = (form.get(f"color_{i}") or "").strip().lower()
+        if len(v) != 7 or v[0] != "#" or not all(c in "0123456789abcdef" for c in v[1:]):
+            return PlainTextResponse(f"Bad color for {r}", status_code=400)
+        colors[r] = v
+    db.set_region_colors(colors, user["username"])
+    return RedirectResponse("/dashboard", status_code=303)
+
+
 @app.get("/audit", response_class=HTMLResponse)
 def audit_page(request: Request):
     """Admin-only: who signed in (or tried to), and who changed what. IPs are personal

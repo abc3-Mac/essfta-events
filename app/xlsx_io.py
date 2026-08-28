@@ -27,10 +27,11 @@ EXAMPLE = ["2026-09-12", "2026-09-13", "EXAMPLE — Timpanogos Hunting Spaniel C
            "UT", "Clarkston", "OPEN / AMATEUR / PUPPY", "-", "-"]
 
 
-REGION_FILLS = {  # legend colors (per Patty Mortara, 18 Aug 2026), for the region banner row
-    "East": "C62828", "Mid East": "CC6600", "Mid West": "1F9D5B",
-    "Rocky Mountain": "7030A0", "West": "2F5FA5",
-}
+def _region_fill(region):
+    """Banner color follows the active (admin-adjustable) palette."""
+    from .db import region_colors
+    color = region_colors().get(region or "")
+    return color.lstrip("#").upper() if color else "434549"
 
 
 def build_template(region: str | None = None) -> bytes:
@@ -40,7 +41,7 @@ def build_template(region: str | None = None) -> bytes:
     banner = ws.cell(row=1, column=1,
                      value=f"REGION: {region}" if region else "REGION: (fill in — East / Mid East / Mid West / Rocky Mountain / West)")
     banner.font = Font(name="Arial", bold=True, size=13, color="FFFFFF")
-    banner.fill = PatternFill("solid", fgColor=REGION_FILLS.get(region or "", "434549"))
+    banner.fill = PatternFill("solid", fgColor=_region_fill(region))
     banner.alignment = Alignment(horizontal="center")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(HEADERS))
     ws.append([h for h, _ in HEADERS])
@@ -73,7 +74,7 @@ def build_export(events, region: str | None, year: int) -> bytes:
     ws.title = f"{region or 'Field Trial'} {year}"[:31]
     banner = ws.cell(row=1, column=1, value=f"REGION: {region}" if region else "REGION: (none — National / other)")
     banner.font = Font(name="Arial", bold=True, size=13, color="FFFFFF")
-    banner.fill = PatternFill("solid", fgColor=REGION_FILLS.get(region or "", "434549"))
+    banner.fill = PatternFill("solid", fgColor=_region_fill(region))
     banner.alignment = Alignment(horizontal="center")
     all_headers = [h for h, _ in HEADERS] + ["STATUS (info only)", "EVENT ID (do not change)"]
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(all_headers))

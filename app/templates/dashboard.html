@@ -54,6 +54,22 @@
   <small>Unticked = visitors see upcoming events only, everywhere (list, calendar, grid,
   printable, iCal). Signed-in governors and admins always see everything.</small>
 </form>
+
+<form class="filters" method="post" action="/settings/colors">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <strong style="font-size:13px">Region colors:</strong>
+  {% for r in REGIONS %}
+  <label style="display:inline-flex;align-items:center;gap:4px">{{ r }}
+    <input type="color" name="color_{{ loop.index0 }}" value="{{ REGION_COLORS[r] }}"
+           style="width:34px;height:24px;padding:1px;border:1px solid var(--line);border-radius:4px;background:#fff">
+  </label>
+  {% endfor %}
+  <button class="btn small" name="do" value="save">Save colors</button>
+  <button class="btn small ghost" name="do" value="default"
+          onclick="return confirm('Return all five regions to the default colors?');">Default colors</button>
+  <small>Click a swatch to pick a new color. Changes show everywhere at once — calendar,
+  legends, Excel banners. Dark colors read best behind white text.</small>
+</form>
 {% endif %}
 
 <form id="bulkbar" method="post" action="/bulk/selected"
