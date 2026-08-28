@@ -13,12 +13,12 @@ EVENT_TYPES = [
     "National", "Canadian Trial", "Gunning Seminar", "Judging Seminar", "Training Seminar",
 ]
 
-REGION_COLORS = {  # canonical ESSFTA legend colors
-    "East": "#2f5fa5",
-    "Mid East": "#8f1d22",
-    "Mid West": "#1f9d5b",
-    "Rocky Mountain": "#b84390",
-    "West": "#a3921e",
+REGION_COLORS = {  # legend colors per Patty Mortara, 18 Aug 2026
+    "East": "#c62828",           # red
+    "Mid East": "#cc6600",       # orange
+    "Mid West": "#1f9d5b",       # green
+    "Rocky Mountain": "#7030a0", # purple
+    "West": "#2f5fa5",           # blue
 }
 
 SCHEMA = """

@@ -27,9 +27,9 @@ EXAMPLE = ["2026-09-12", "2026-09-13", "EXAMPLE — Timpanogos Hunting Spaniel C
            "UT", "Clarkston", "OPEN / AMATEUR / PUPPY", "-", "-"]
 
 
-REGION_FILLS = {  # canonical legend colors, for the region banner row
-    "East": "2F5FA5", "Mid East": "8F1D22", "Mid West": "1F9D5B",
-    "Rocky Mountain": "B84390", "West": "A3921E",
+REGION_FILLS = {  # legend colors (per Patty Mortara, 18 Aug 2026), for the region banner row
+    "East": "C62828", "Mid East": "CC6600", "Mid West": "1F9D5B",
+    "Rocky Mountain": "7030A0", "West": "2F5FA5",
 }
 
 

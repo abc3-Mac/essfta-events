@@ -50,10 +50,10 @@ the whole thing embeds by iframe into the ESSFTA main WordPress site.
   (create-only; existing club+date rows are skipped).
 - `/audit` (admins) — sign-in log (failures highlighted) + recent event changes.
 
-## Region colors (canonical ESSFTA legend)
+## Region colors (per Patty Mortara, Field Secretary, 18 Aug 2026)
 
-East `#2f5fa5` · Mid East `#8f1d22` · Mid West `#1f9d5b` ·
-Rocky Mountain `#b84390` · West `#a3921e` · no region (Hunt Tests, Nationals, seminars) gray
+East red `#c62828` · Mid East orange `#cc6600` · Mid West green `#1f9d5b` ·
+Rocky Mountain purple `#7030a0` · West blue `#2f5fa5` · no region (Hunt Tests, Nationals, seminars) gray
 
 ## Run locally
 
