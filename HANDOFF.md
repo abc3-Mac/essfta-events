@@ -10,6 +10,9 @@ Governors + two admins (Albert, Patty). See README.md for routes and the embed s
 
 ## State at handoff
 - **Local:** fully working, 50/50 smoke tests pass (`seed/smoke_test.sh`).
+- **18 Aug 2026 round 3:** public past-events admin toggle (default: allowed), region
+  colors reassigned per Patty + admin color swatches with a Default button
+  (`region_colors` setting; `db.REGION_COLORS` is a live view — Excel banners follow).
 - **18 Aug 2026 round 2:** `/excel` export + edit-in-place upload (EVENT ID column,
   preview-confirm, undoable; `as_new` mode = draft next year from this year's file),
   dashboard multi-select + action bar (incl. shift-by-N-days), per-row Copy → next
