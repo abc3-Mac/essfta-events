@@ -77,5 +77,5 @@ latest event; list calendar events missing from the doc, never auto-delete) → 
 page → reuse `/import/apply` with a `kind` param (audit `:schedule`, batch `schedule-import`,
 undoable). Notes: manage one `Schedule: TENTATIVE (revised …)` line per event, replaced on
 re-import. Add panel 4 on /excel + /help text + smoke tests; then redeploy stack 70.
-**Live state:** the Mid West 2027 roll-forward was PREVIEWED but NOT created (Albert to
-click, or this importer will load the doc directly once built).
+**Live state:** Mid West 2027 LOADED 8 Oct (batch 261008-da8140 + edits); this importer
+will reconcile future revisions of the doc.
