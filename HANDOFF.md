@@ -61,3 +61,21 @@ Governors + two admins (Albert, Patty). See README.md for routes and the embed s
 users(username, role governor|admin, region, active). Admins manage governors at
 `/users` — create (password shown once), reset password, deactivate/reactivate.
 Admins are only creatable by seed script or DB edit, by design.
+
+## WIP (8 Oct 2026): import a Word/text schedule — PARSER ONLY, not wired up
+`app/schedule_text.py` reads the interclub schedules governors circulate (.docx or pasted
+text, one "M/D-D  Club (note)" line per trial). Verified on `tests/fixtures/midwest-2027.docx`
+(Mid West 2027, 20 trials, Easter skipped, year/region/"TENTATIVE" read from the heading,
+"(Fri Open)" kept as a note, "(Fri-Sat)" dropped). Club spellings matched to existing
+clubs (abbreviation-normalised; fuzzy only at typo level). Optional local-AI fallback for
+unreadable lines (`SCHEDULE_LLM_URL/KEY/MODEL` → NAS llama.cpp `http://192.168.0.49:8434/v1`),
+answers re-validated, rows flagged for checking.
+**Still to do:** `POST /import/schedule` (file or pasted text; governor region forced) →
+reconcile against that region/year (match same club: exact start first, then nearest
+within ±21 days → date UPDATE; else CREATE carrying city/state/venue/stakes from the club's
+latest event; list calendar events missing from the doc, never auto-delete) → preview
+page → reuse `/import/apply` with a `kind` param (audit `:schedule`, batch `schedule-import`,
+undoable). Notes: manage one `Schedule: TENTATIVE (revised …)` line per event, replaced on
+re-import. Add panel 4 on /excel + /help text + smoke tests; then redeploy stack 70.
+**Live state:** the Mid West 2027 roll-forward was PREVIEWED but NOT created (Albert to
+click, or this importer will load the doc directly once built).
